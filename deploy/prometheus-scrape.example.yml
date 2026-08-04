@@ -1,0 +1,26 @@
+# Drop into your Prometheus scrape_configs. The admin port is loopback-only by
+# default, so scrape from the same host or through a tunnel/sidecar.
+scrape_configs:
+  - job_name: mirall-relay
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['127.0.0.1:9200']
+        labels:
+          service: mirall-relay
+
+# Alerts worth having from day one:
+#
+#   relay_dht_firewalled == 1
+#     The relay cannot be reached. It is advertising a key nobody can use.
+#
+#   relay_ready == 0
+#     Not listening or not bootstrapped.
+#
+#   relay_links_active / <maxActiveLinks> > 0.8
+#     Approaching the global ceiling; new connections are about to be refused.
+#
+#   rate(relay_bytes_relayed_total[1h]) projected over a month > your egress budget
+#     Bandwidth is the entire cost of running this. Watch it before the invoice does.
+#
+#   increase(relay_sessions_rejected_total{reason="pending-pairings"}[5m]) > 0
+#     Either an abuse attempt or a misconfigured cap.

@@ -1,0 +1,52 @@
+# systemd unit for a non-Docker deployment.
+#
+#   useradd --system --home-dir /var/lib/mirall-relay --create-home mirall-relay
+#   install -D -m600 -o mirall-relay -g mirall-relay seed /var/lib/mirall-relay/seed
+#   cp mirall-relay.env.example /etc/mirall-relay.env  && chmod 600 /etc/mirall-relay.env
+#   systemctl enable --now mirall-relay
+
+[Unit]
+Description=Mirall blind relay
+Documentation=https://github.com/ok/mirall-relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mirall-relay
+Group=mirall-relay
+WorkingDirectory=/opt/mirall-relay
+EnvironmentFile=/etc/mirall-relay.env
+ExecStart=/usr/bin/node /opt/mirall-relay/bin/mirall-relay.js
+Restart=always
+RestartSec=5
+
+# The process handles SIGTERM itself (drains sessions, closes the DHT node).
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Hardening. The relay needs exactly one writable path: the seed directory.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=false
+ReadWritePaths=/var/lib/mirall-relay
+
+# Bandwidth, not CPU, is the constraint — but a runaway must not take the box.
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mirall-relay
+
+[Install]
+WantedBy=multi-user.target

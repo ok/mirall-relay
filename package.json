@@ -1,0 +1,44 @@
+{
+  "name": "mirall-relay",
+  "version": "0.1.0",
+  "description": "A blind relay for Mirall \u2014 bridges end-to-end-encrypted connections between peers that cannot hole-punch to each other.",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "mirall-relay": "./bin/mirall-relay.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "scripts",
+    "deploy"
+  ],
+  "scripts": {
+    "start": "node bin/mirall-relay.js",
+    "keygen": "node bin/mirall-relay.js keygen",
+    "probe": "node scripts/probe.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "node --test test/unit/*.test.js test/integration/*.test.js",
+    "test:unit": "node --test test/unit/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js",
+    "test:smoke": "node --test test/smoke/*.test.js"
+  },
+  "dependencies": {
+    "b4a": "^1.6.7",
+    "blind-relay": "^1.6.1",
+    "hypercore-crypto": "^3.4.2",
+    "hypercore-id-encoding": "^1.3.0",
+    "hyperdht": "6.32.0",
+    "pino": "^9.5.0",
+    "prom-client": "^15.1.3"
+  },
+  "devDependencies": {
+    "eslint": "^9.16.0",
+    "hyperswarm": "^4.17.0",
+    "neostandard": "^0.11.9"
+  }
+}

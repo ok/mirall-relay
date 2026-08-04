@@ -1,0 +1,59 @@
+# Production-shaped Compose file. Read the two comments about networking and the
+# seed before deploying — both are the difference between a working relay and a
+# silently useless one.
+services:
+  relay:
+    build: .
+    image: ghcr.io/ok/mirall-relay:latest # pin by @sha256 digest in production
+    restart: unless-stopped
+
+    # NETWORKING — pick ONE.
+    #
+    # (a) host networking, the reliable default. HyperDHT hole-punching needs the
+    #     relay's UDP port reachable with a stable external mapping; Docker's
+    #     userland proxy and conntrack rewrite that on some hosts and degrade
+    #     punch success in ways that are painful to diagnose.
+    network_mode: host
+    #
+    # (b) explicit publishing. Comment out network_mode above and uncomment this.
+    #     Verify with `curl 127.0.0.1:9200/readyz` -> "firewalled": false.
+    # ports:
+    #   - "49737:49737/udp"
+    #   - "127.0.0.1:9200:9200/tcp"
+
+    environment:
+      MIRALL_RELAY_PORT: "49737" # pinned so firewall/NAT rules stay stable
+      MIRALL_RELAY_ADMIN_HOST: "127.0.0.1" # with host networking, keep admin local
+      MIRALL_RELAY_ADMIN_PORT: "9200"
+      MIRALL_RELAY_REGION: "eu-fsn1"
+      MIRALL_RELAY_OPERATOR: "example"
+      MIRALL_RELAY_MAX_LINK_RATE: "4MiB"
+      MIRALL_RELAY_LOG_LEVEL: "info"
+      # Set once you have confirmed a public IP with unfiltered UDP. It skips
+      # hyperdht's own probing; setting it while actually firewalled produces a
+      # relay that advertises itself and then fails every connection.
+      # MIRALL_RELAY_ASSUME_REACHABLE: "true"
+      NODE_ENV: "production"
+
+    # THE SEED IS THE IDENTITY. Without this volume every container replacement
+    # mints a new public key and strands every client that configured the old one.
+    volumes:
+      - relay-data:/data
+
+    # Optional: supply the seed as a secret instead of letting the volume hold it.
+    # secrets: [relay_seed]
+
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+volumes:
+  relay-data:
+# secrets:
+#   relay_seed:
+#     file: ./.secrets/relay_seed   # 64 hex chars, mode 0600, NEVER committed

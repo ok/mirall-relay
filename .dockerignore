@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+test
+.keys
+.secrets
+*.log
+coverage
+npm-debug.log*
+Dockerfile
+docker-compose.yml
