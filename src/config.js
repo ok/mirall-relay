@@ -13,6 +13,7 @@ const SPEC = {
   // identity / networking
   seed: ['SEED', asSeedHex],
   'seed-file': ['SEED_FILE', asString],
+  'seed-secret-file': ['SEED_SECRET_FILE', asString],
   bootstrap: ['BOOTSTRAP', asList],
   host: ['HOST', asString],
   port: ['PORT', asInt],
@@ -41,7 +42,12 @@ const SPEC = {
 }
 
 export const DEFAULTS = Object.freeze({
-  seed: null, // 64-hex; overrides seedFile when set
+  seed: null, // 64-hex; overrides everything below when set
+  // A mounted secret (Docker/Compose/Kubernetes) holding a 64-hex seed. Preferred
+  // over MIRALL_RELAY_SEED because env vars leak into `docker inspect`, process
+  // listings and crash reports; a file does not. Read in-process rather than by an
+  // entrypoint shell script, so the runtime image needs no shell.
+  seedSecretFile: '/run/secrets/relay_seed',
   seedFile: './.keys/seed',
   bootstrap: null, // null -> hyperdht's mainline bootstrap
   host: '0.0.0.0',
@@ -211,7 +217,7 @@ export function validate (c) {
   if (c.sessionRate < 1) throw new Error('sessionRate must be >= 1')
   if (c.overRateGraceMs < 0) throw new Error('overRateGraceMs must be >= 0')
   if (c.meterMs < 10) throw new Error('meterMs must be >= 10')
-  if (!c.seed && !c.seedFile) throw new Error('one of seed or seedFile is required')
+  if (!c.seed && !c.seedFile && !c.seedSecretFile) throw new Error('one of seed, seedSecretFile or seedFile is required')
   if (c.allowlist) for (const k of c.allowlist) decodeKeyOrThrow(k)
   if (c.banlist) for (const k of c.banlist) decodeKeyOrThrow(k)
   if (c.bootstrap) for (const e of c.bootstrap) parseBootstrapEntry(e)

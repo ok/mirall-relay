@@ -17,6 +17,8 @@ USAGE
 OPTIONS  (every flag has a MIRALL_RELAY_* environment equivalent)
   --seed HEX                 64-hex identity seed (overrides --seed-file)
   --seed-file PATH           seed file, generated on first run   [./.keys/seed]
+  --seed-secret-file PATH    mounted secret, read before --seed-file
+                             [/run/secrets/relay_seed]
   --bootstrap host:port,...  DHT bootstrap override              [mainline]
   --host ADDR                UDP bind address                    [0.0.0.0]
   --port N                   UDP port, 0 = ephemeral             [49737]

@@ -36,7 +36,7 @@ else's. That is the point of this repository being public.
 ```sh
 # 1. Generate an identity. The PUBLIC KEY is what users paste into Mirall.
 #    The SEED is secret: back it up, and never let it change.
-docker run --rm ghcr.io/ok/mirall-relay:latest node bin/mirall-relay.js keygen
+docker run --rm ghcr.io/ok/mirall-relay:latest bin/mirall-relay.js keygen
 
 # 2. Run it. The named volume is what keeps the identity stable.
 docker compose up -d
@@ -104,6 +104,26 @@ A `deploy/mirall-relay.service` systemd unit and a documented
 
 ---
 
+## The image
+
+The runtime stage is **distroless** — glibc, so the Holepunch native addons load
+(Alpine/musl would mean building libsodium and libudx from source), but with no
+shell, no package manager and no userland. It runs as uid `65532`, and the
+prebuilt addons for the twelve architectures you are not building for are pruned
+away, which is most of the difference between a ~280 MB image and a ~165 MB one.
+
+The trade-off is deliberate: `docker exec <container> sh` does not exist. Debug
+from outside with `docker logs`, the `/metrics` endpoint, and `scripts/probe.js`.
+
+To run the CLI, override the command — the entrypoint is already node:
+
+```sh
+docker run --rm mirall-relay:local bin/mirall-relay.js keygen
+docker run --rm mirall-relay:local bin/mirall-relay.js --help
+```
+
+---
+
 ## Configuration
 
 Every option is available as an environment variable (`MIRALL_RELAY_*`) and as a
@@ -112,7 +132,8 @@ CLI flag. Run `mirall-relay --help` for the full list; the essentials:
 | Env | Default | Notes |
 |---|---|---|
 | `MIRALL_RELAY_SEED_FILE` | `./.keys/seed` | Identity. Generated on first run, then **never change it**. |
-| `MIRALL_RELAY_SEED` | — | 64-hex seed; overrides the file. Prefer a secret file. |
+| `MIRALL_RELAY_SEED` | — | 64-hex seed; overrides everything. Prefer a secret file. |
+| `MIRALL_RELAY_SEED_SECRET_FILE` | `/run/secrets/relay_seed` | Mounted secret holding the seed. Read in-process; wins over `SEED_FILE`. |
 | `MIRALL_RELAY_PORT` | `49737` | UDP port. Pin it so firewall rules stay stable. |
 | `MIRALL_RELAY_ASSUME_REACHABLE` | `false` | Skip reachability probing. Only set it when you *know* the host is public. |
 | `MIRALL_RELAY_ADMIN_HOST` | `127.0.0.1` | Admin/metrics bind. **Never expose publicly.** |

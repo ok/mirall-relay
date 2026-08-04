@@ -40,7 +40,9 @@ services:
     volumes:
       - relay-data:/data
 
-    # Optional: supply the seed as a secret instead of letting the volume hold it.
+    # Optional: supply the seed as a mounted secret instead of letting the volume
+    # generate and hold it. Read in-process from /run/secrets/relay_seed, so it
+    # needs no entrypoint script and takes precedence over the volume.
     # secrets: [relay_seed]
 
     read_only: true

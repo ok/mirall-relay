@@ -86,5 +86,52 @@ test('writeSeed refuses to clobber an existing identity', () => {
 })
 
 test('loadOrCreateSeed needs somewhere to look', () => {
-  assert.throws(() => loadOrCreateSeed({}), /no seed and no seedFile/)
+  assert.throws(() => loadOrCreateSeed({}), /no seed, seedSecretFile or seedFile/)
+})
+
+test('a mounted secret file supplies the seed without writing anything', () => {
+  // Replaces what the old shell entrypoint did, so the runtime image needs no
+  // shell. The secret is read-only: nothing is persisted alongside it.
+  const dir = tmpDir()
+  const secret = path.join(dir, 'relay_seed')
+  const seedFile = path.join(dir, 'seed')
+  const hex = 'd'.repeat(64)
+  fs.writeFileSync(secret, hex + '\n')
+
+  const seed = loadOrCreateSeed({ seedSecretFile: secret, seedFile })
+  assert.equal(b4a.toString(seed, 'hex'), hex)
+  assert.equal(fs.existsSync(seedFile), false, 'a mounted secret must not be copied to disk')
+})
+
+test('an explicit seed still beats a mounted secret', () => {
+  const dir = tmpDir()
+  const secret = path.join(dir, 'relay_seed')
+  fs.writeFileSync(secret, 'd'.repeat(64))
+
+  const seed = loadOrCreateSeed({ seed: 'e'.repeat(64), seedSecretFile: secret })
+  assert.equal(b4a.toString(seed, 'hex'), 'e'.repeat(64))
+})
+
+test('a malformed secret fails loudly rather than minting a new identity', () => {
+  // The dangerous failure mode: falling through to "generate a seed" would look
+  // healthy and silently strand every client configured with the old key.
+  const dir = tmpDir()
+  const secret = path.join(dir, 'relay_seed')
+  const seedFile = path.join(dir, 'seed')
+  fs.writeFileSync(secret, 'not-a-seed')
+
+  assert.throws(
+    () => loadOrCreateSeed({ seedSecretFile: secret, seedFile }),
+    /does not contain a 64-hex seed/
+  )
+  assert.equal(fs.existsSync(seedFile), false)
+})
+
+test('an absent secret path falls through to the seed file', () => {
+  const dir = tmpDir()
+  const seed = loadOrCreateSeed({
+    seedSecretFile: path.join(dir, 'no-such-secret'),
+    seedFile: path.join(dir, 'seed')
+  })
+  assert.equal(seed.byteLength, 32)
 })

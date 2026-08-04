@@ -131,16 +131,32 @@ test('the container stops cleanly on SIGTERM', { skip }, async (t) => {
   assert.ok(elapsed < 15_000, `shutdown took ${elapsed}ms — it should not need the full grace period`)
 })
 
-test('the container runs as a non-root user', { skip }, async (t) => {
+test('the container runs as a non-root user', { skip }, async () => {
   await buildImage()
-  const { stdout } = await execFile('docker', ['run', '--rm', '--entrypoint', 'id', IMAGE, '-u'])
+  // No `id` binary: the runtime image is distroless. Ask node instead — its
+  // entrypoint is the only executable in there.
+  const { stdout } = await execFile('docker', [
+    'run', '--rm', IMAGE, '-e', 'console.log(process.getuid())'
+  ])
   assert.notEqual(stdout.trim(), '0', 'the relay must not run as root')
+})
+
+test('the runtime image ships no shell', { skip }, async () => {
+  await buildImage()
+  // Not a nice-to-have: a shell in a network-exposed container is the difference
+  // between a bug and a foothold. If a future base change reintroduces one, this
+  // should be a deliberate decision, not a silent regression.
+  await assert.rejects(
+    execFile('docker', ['run', '--rm', '--entrypoint', '/bin/sh', IMAGE, '-c', 'echo hi']),
+    'expected no /bin/sh in the runtime image'
+  )
 })
 
 test('the CLI is usable inside the image', { skip }, async () => {
   await buildImage()
+  // The base image's ENTRYPOINT is node, so CMD is just the script path.
   const { stdout } = await execFile('docker', [
-    'run', '--rm', IMAGE, 'node', 'bin/mirall-relay.js', 'keygen'
+    'run', '--rm', IMAGE, 'bin/mirall-relay.js', 'keygen'
   ])
   assert.match(stdout, /PUBLIC KEY/)
   assert.match(stdout, /SEED/)

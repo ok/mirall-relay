@@ -113,7 +113,12 @@ test('validate rejects out-of-range and nonsensical caps', () => {
   assert.throws(() => validate({ ...base, maxLinkMs: 10 }), /maxLinkMs/)
   assert.throws(() => validate({ ...base, meterMs: 1 }), /meterMs/)
   assert.throws(() => validate({ ...base, sessionRate: 0 }), /sessionRate/)
-  assert.throws(() => validate({ ...base, seed: null, seedFile: null }), /seed or seedFile/)
+  assert.throws(
+    () => validate({ ...base, seed: null, seedFile: null, seedSecretFile: null }),
+    /seed, seedSecretFile or seedFile/
+  )
+  // Any one of the three is enough — the default secret path alone is valid.
+  assert.doesNotThrow(() => validate({ ...base, seed: null, seedFile: null }))
   assert.doesNotThrow(() => validate({ ...base }))
 })
 

@@ -14,24 +14,34 @@ import b4a from 'b4a'
 
 export const SEED_MODE = 0o600
 
-// Precedence: an explicit hex seed (secret manager / env) beats the seed file.
-// When neither exists, generate one and persist it 0600 before returning, so a
-// crash between generate and use can never produce two different identities.
-export function loadOrCreateSeed ({ seed = null, seedFile = null } = {}) {
+// Precedence: explicit hex seed -> mounted secret file -> seed file (created on
+// first run). Generating persists 0600 before returning, so a crash between
+// generate and use can never produce two different identities.
+export function loadOrCreateSeed ({ seed = null, seedSecretFile = null, seedFile = null } = {}) {
   if (seed) return b4a.from(seed, 'hex')
-  if (!seedFile) throw new Error('no seed and no seedFile configured')
 
-  if (fs.existsSync(seedFile)) {
-    const text = fs.readFileSync(seedFile, 'utf8').trim()
-    if (!/^[0-9a-fA-F]{64}$/.test(text)) {
-      throw new Error(`seed file ${seedFile} does not contain a 64-hex seed`)
-    }
-    return b4a.from(text, 'hex')
+  // A mounted secret is authoritative and read-only: never fall through to
+  // generating when one is present but malformed — that would silently mint a
+  // new identity and strand every configured client.
+  if (seedSecretFile && fs.existsSync(seedSecretFile)) {
+    return readSeedFile(seedSecretFile)
   }
+
+  if (!seedFile) throw new Error('no seed, seedSecretFile or seedFile configured')
+
+  if (fs.existsSync(seedFile)) return readSeedFile(seedFile)
 
   const fresh = crypto.randomBytes(32)
   writeSeed(seedFile, fresh)
   return fresh
+}
+
+function readSeedFile (file) {
+  const text = fs.readFileSync(file, 'utf8').trim()
+  if (!/^[0-9a-fA-F]{64}$/.test(text)) {
+    throw new Error(`seed file ${file} does not contain a 64-hex seed`)
+  }
+  return b4a.from(text, 'hex')
 }
 
 export function writeSeed (seedFile, seed) {
