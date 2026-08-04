@@ -47,7 +47,39 @@ curl -s localhost:9200/readyz
 ```
 
 `"firewalled": true` means clients cannot reach you — open UDP 49737 and try
-again. A firewalled relay starts, logs an error, and serves nothing.
+again. A firewalled relay starts, logs an error, returns 503 on `/readyz`, and
+serves nothing.
+
+### Running it locally (Docker Desktop) — smoke test only
+
+```sh
+docker build -t mirall-relay:local .
+docker volume create mirall-relay-data
+
+docker run -d --name mirall-relay \
+  -p 49737:49737/udp \
+  -p 127.0.0.1:9200:9200/tcp \
+  -v mirall-relay-data:/data \
+  mirall-relay:local
+
+curl -s localhost:9200/readyz
+```
+
+On a laptop this will report **`"firewalled": true`** and `/readyz` will return
+**503**, and that is correct: your machine is behind NAT, and on macOS/Windows
+Docker Desktop adds a Linux VM in between. The container is healthy and every
+endpoint works, but **it is not a usable relay** — no peer can hole-punch to it.
+Use this to check the image, the endpoints and that the seed persists; use a host
+with a public IP for anything real.
+
+`network_mode: host` in `docker-compose.yml` is a **Linux** setting. On Docker
+Desktop it does not attach to your machine's network, so comment it out and use
+the `ports:` block instead.
+
+> **Not a bug:** while firewalled, the `address` in the startup log shows a random
+> high port rather than your configured one. HyperDHT reports its ephemeral client
+> socket in that state. The `port` field in the same log line is the one to open
+> in your firewall.
 
 ## Quick start (Node, no Docker)
 

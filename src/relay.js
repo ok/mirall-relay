@@ -114,6 +114,12 @@ export class RelayNode {
       publicKey: this.publicKeyZ32,
       firewalled: this.firewalled,
       ephemeral: !!this.dht.ephemeral,
+      // The port to open in the firewall and publish from a container. Reported
+      // separately because dht.address() is NOT it while firewalled: dht-rpc's
+      // `socket` getter returns the ephemeral CLIENT socket in that state
+      // (dht-rpc/index.js:139), so the address below shows a random high port and
+      // reads like the configured port was ignored. It wasn't.
+      port: this.cfg.port,
       address: this.address
     }, 'relay listening')
 

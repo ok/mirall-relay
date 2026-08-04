@@ -1,4 +1,7 @@
-# syntax=docker/dockerfile:1
+# No `# syntax=` directive on purpose: this Dockerfile uses only classic
+# instructions, and pinning a BuildKit frontend makes every build fetch it from
+# Docker Hub first — an avoidable network dependency that fails behind a
+# restrictive network or a cold registry.
 
 # ---- build -------------------------------------------------------------
 # Kept separate so the runtime image never carries npm's cache or dev deps.
