@@ -27,7 +27,7 @@ export function createRelay (cfg, opts = {}) {
   const firewall = makeFirewall(cfg, metrics)
   const meter = makeMeter(cfg, metrics, logger, firewall)
   const relay = new RelayNode(cfg, { logger, metrics, firewall, meter, version: VERSION })
-  const admin = makeAdminServer(cfg, { metrics, relay, logger })
+  const admin = makeAdminServer(cfg, { metrics, relay, firewall, logger })
 
   return { cfg, logger, metrics, firewall, meter, relay, admin }
 }

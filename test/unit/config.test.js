@@ -128,3 +128,18 @@ test('an invalid value names the env var and the flag that set it', () => {
     /MIRALL_RELAY_PORT \/ --port: expected an integer/
   )
 })
+
+test('the browser status page is on by default and can be turned off', () => {
+  assert.equal(loadConfig([], {}).adminUi, true)
+  assert.equal(loadConfig([], { MIRALL_RELAY_ADMIN_UI: 'false' }).adminUi, false)
+  assert.equal(loadConfig(['--admin-ui=false'], {}).adminUi, false)
+  assert.equal(loadConfig(['--admin-ui'], {}).adminUi, true, 'a bare flag is still true')
+})
+
+test('extra admin hosts parse as a list and default to none', () => {
+  assert.equal(loadConfig([], {}).adminAllowedHosts, null)
+  assert.deepEqual(
+    loadConfig([], { MIRALL_RELAY_ADMIN_ALLOWED_HOSTS: 'relay.internal, umbrel.local' }).adminAllowedHosts,
+    ['relay.internal', 'umbrel.local']
+  )
+})

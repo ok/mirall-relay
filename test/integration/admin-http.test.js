@@ -99,7 +99,7 @@ test('/metrics renders Prometheus text reflecting live traffic', async (t) => {
 
 test('unknown paths 404 and writes are refused', async (t) => {
   const { base } = await withRelay(t)
-  assert.equal((await fetch(base + '/')).status, 404)
+  assert.equal((await fetch(base + '/')).status, 200, 'the root is the status page')
   assert.equal((await fetch(base + '/admin')).status, 404)
   assert.equal((await fetch(base + '/healthz', { method: 'POST' })).status, 405)
   assert.equal((await fetch(base + '/metrics', { method: 'DELETE' })).status, 405)
