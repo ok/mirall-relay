@@ -27,6 +27,9 @@ OPTIONS  (every flag has a MIRALL_RELAY_* environment equivalent)
 
   --admin-host ADDR          admin HTTP bind                     [127.0.0.1]
   --admin-port N             admin HTTP port                     [9200]
+  --admin-ui BOOL            serve the browser status page       [true]
+  --admin-allowed-hosts H,.. extra Host values accepted when the
+                             admin server is bound to loopback   [none]
 
   --max-sessions-per-key N   sessions per peer DEVICE key        [64]
   --max-active-links N       global bridged-stream ceiling       [2000]
@@ -83,7 +86,10 @@ try {
 app.logger.info({
   version: VERSION,
   publicKey: app.relay.publicKeyZ32,
-  admin: `http://${cfg.adminHost}:${cfg.adminPort}`
+  admin: `http://${cfg.adminHost}:${cfg.adminPort}`,
+  // The key used to be available only from this line. It is now on a page, and
+  // saying so here is what makes anyone look.
+  ...(cfg.adminUi ? { statusPage: `http://${cfg.adminHost}:${cfg.adminPort}/` } : {})
 }, 'mirall-relay started')
 
 // Graceful shutdown: stop metering, close the blind-relay sessions, close the

@@ -22,6 +22,8 @@ const SPEC = {
   // admin http
   'admin-host': ['ADMIN_HOST', asString],
   'admin-port': ['ADMIN_PORT', asInt],
+  'admin-ui': ['ADMIN_UI', asBool],
+  'admin-allowed-hosts': ['ADMIN_ALLOWED_HOSTS', asList],
   // caps
   'max-sessions-per-key': ['MAX_SESSIONS_PER_KEY', asInt],
   'max-active-links': ['MAX_ACTIVE_LINKS', asInt],
@@ -57,6 +59,10 @@ export const DEFAULTS = Object.freeze({
 
   adminHost: '127.0.0.1', // never expose the admin surface publicly
   adminPort: 9200,
+  adminUi: true, // the browser status page; false leaves only the JSON endpoints
+  // Extra Host header values accepted when the admin server is bound to loopback.
+  // See src/admin-http.js — the guard is inert on any other bind.
+  adminAllowedHosts: null,
 
   // Per DEVICE, not per user or per plane. The connection a peer makes TO the
   // relay uses its DHT node's defaultKeyPair (hyperdht/lib/connect.js:47,793 —
