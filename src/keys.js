@@ -15,25 +15,46 @@ import b4a from 'b4a'
 export const SEED_MODE = 0o600
 
 // Precedence: explicit hex seed -> mounted secret file -> seed file (created on
-// first run). Generating persists 0600 before returning, so a crash between
-// generate and use can never produce two different identities.
-export function loadOrCreateSeed ({ seed = null, seedSecretFile = null, seedFile = null } = {}) {
-  if (seed) return b4a.from(seed, 'hex')
+// first run). Stated once, as a value, because the status page has to be able to
+// tell an operator where their identity is actually coming from — a relay reading
+// a seed it generated inside a container with no volume looks exactly like a
+// healthy one until the container is replaced.
+export function seedSource ({ seed = null, seedSecretFile = null, seedFile = null } = {}) {
+  if (seed) return { from: 'env', path: null }
+  if (seedSecretFile && fs.existsSync(seedSecretFile)) return { from: 'secret-file', path: seedSecretFile }
+  if (seedFile) return { from: 'file', path: seedFile }
+  return { from: 'none', path: null }
+}
+
+// Generating persists 0600 before returning, so a crash between generate and use
+// can never produce two different identities.
+//
+// `created` is the load-bearing part: seedSource() alone answers "where would it
+// look", which is identical before and after a seed is minted. Only this function
+// knows whether the identity on screen was READ from that path or invented three
+// lines ago — and that is the difference between a healthy relay and one that is
+// a single container replacement away from stranding every client.
+export function resolveSeed (cfg = {}) {
+  const { from, path: file } = seedSource(cfg)
+
+  if (from === 'env') return { seed: b4a.from(cfg.seed, 'hex'), from, path: null, created: false }
 
   // A mounted secret is authoritative and read-only: never fall through to
   // generating when one is present but malformed — that would silently mint a
   // new identity and strand every configured client.
-  if (seedSecretFile && fs.existsSync(seedSecretFile)) {
-    return readSeedFile(seedSecretFile)
-  }
+  if (from === 'secret-file') return { seed: readSeedFile(file), from, path: file, created: false }
 
-  if (!seedFile) throw new Error('no seed, seedSecretFile or seedFile configured')
+  if (from === 'none') throw new Error('no seed, seedSecretFile or seedFile configured')
 
-  if (fs.existsSync(seedFile)) return readSeedFile(seedFile)
+  if (fs.existsSync(file)) return { seed: readSeedFile(file), from, path: file, created: false }
 
   const fresh = crypto.randomBytes(32)
-  writeSeed(seedFile, fresh)
-  return fresh
+  writeSeed(file, fresh)
+  return { seed: fresh, from, path: file, created: true }
+}
+
+export function loadOrCreateSeed (cfg = {}) {
+  return resolveSeed(cfg).seed
 }
 
 function readSeedFile (file) {

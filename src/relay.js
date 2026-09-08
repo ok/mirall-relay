@@ -21,7 +21,19 @@ import DHT from 'hyperdht'
 import Relay from 'blind-relay'
 import b4a from 'b4a'
 import { bootstrapNodes } from './config.js'
-import { loadOrCreateSeed, keyPairFromSeed, publicKeyZ32 } from './keys.js'
+import { resolveSeed, keyPairFromSeed, publicKeyZ32 } from './keys.js'
+
+// udx's socket.address() returns { host, family, port } — NOT Node's dgram shape
+// with `address`. Normalised here so the status snapshot has one contract and a
+// udx change cannot silently render "undefined:54949" on the page.
+function boundAddress (address) {
+  if (!address) return null
+  return {
+    host: address.host || address.address || null,
+    port: address.port,
+    family: address.family
+  }
+}
 
 export class RelayNode {
   constructor (cfg, deps = {}) {
@@ -38,6 +50,8 @@ export class RelayNode {
     this.keyPair = null
     this.ready = false
     this.closing = false
+    this.startedAt = null
+    this.seedSource = { from: 'none', path: null, created: false }
     this._sessions = new Set()
   }
 
@@ -65,10 +79,32 @@ export class RelayNode {
     return this.relay ? this.relay.stats : null
   }
 
+  // What the DHT believes about our place on the network. `host` and `port` are
+  // dht-rpc's NAT sampler view (dht-rpc/index.js:126,130) — the address other
+  // nodes actually observe, which is the number to compare against the port an
+  // operator forwarded. `randomized` is the one reachability failure the
+  // firewalled verdict does not catch: a symmetric NAT that hands out a fresh
+  // external port per destination reports firewalled: false and still cannot be
+  // hole-punched to.
+  networkInfo () {
+    const { dht } = this
+    if (!dht) return { host: null, port: null, randomized: false, bootstrapped: false, ephemeral: false, nodes: 0, address: null }
+    return {
+      host: dht.host || null,
+      port: dht.port || null,
+      randomized: !!dht.randomized,
+      bootstrapped: !!dht.bootstrapped,
+      ephemeral: !!dht.ephemeral,
+      nodes: dht.nodes ? dht.nodes.length : 0,
+      address: boundAddress(this.address)
+    }
+  }
+
   async start () {
     const { cfg, logger } = this
 
-    const seed = loadOrCreateSeed(cfg)
+    const { seed, ...source } = resolveSeed(cfg)
+    this.seedSource = source
     this.keyPair = keyPairFromSeed(seed)
 
     const bootstrap = bootstrapNodes(cfg)
@@ -99,8 +135,16 @@ export class RelayNode {
     await this.dht.fullyBootstrapped()
 
     this.ready = true
+    this.startedAt = Date.now()
     this.metrics?.m.ready.set(1)
     this.metrics?.m.dhtFirewalled.set(this.firewalled ? 1 : 0)
+
+    if (this.seedSource.created) {
+      logger?.warn(
+        { publicKey: this.publicKeyZ32, seedFile: this.seedSource.path },
+        'a NEW identity was generated — if this path is not persistent storage, every client given this key is stranded when this process is replaced'
+      )
+    }
 
     if (this.firewalled) {
       logger?.error(

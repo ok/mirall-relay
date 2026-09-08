@@ -81,6 +81,37 @@ export function makeMetrics ({ collectDefault = true } = {}) {
   return { registry, m }
 }
 
+// Read our own counters back out of the registry.
+//
+// WHY NOT A SECOND TALLY: /metrics and the status page must never disagree about
+// how many bytes this relay moved — that number is the operator's egress bill, and
+// two independent accumulators would eventually differ by exactly the amount
+// nobody can explain. getSingleMetric returns undefined for a name that was never
+// registered, so a trimmed registry degrades to zero instead of throwing inside a
+// request handler.
+export async function snapshotCounters (metrics) {
+  const rows = async (name) => {
+    const metric = metrics?.registry.getSingleMetric(name)
+    return metric ? (await metric.get()).values : []
+  }
+  const total = (values) => values.reduce((sum, row) => sum + row.value, 0)
+  const byLabel = (values, label) => Object.fromEntries(values.map((row) => [row.labels[label], row.value]))
+
+  const rejected = await rows('relay_sessions_rejected_total')
+  const torn = await rows('relay_links_torn_by_cap_total')
+
+  return {
+    bytesRelayed: total(await rows('relay_bytes_relayed_total')),
+    linksActive: total(await rows('relay_links_active')),
+    linksOpened: total(await rows('relay_links_opened_total')),
+    sessionsAccepted: total(await rows('relay_sessions_accepted_total')),
+    sessionsRejected: byLabel(rejected, 'reason'),
+    sessionsRejectedTotal: total(rejected),
+    linksTornByCap: byLabel(torn, 'cap'),
+    linksTornByCapTotal: total(torn)
+  }
+}
+
 // Mirror blind-relay's `server.stats` into the registry. Called immediately
 // before rendering /metrics so a scrape always reflects the live library state
 // rather than whatever a timer last happened to copy.

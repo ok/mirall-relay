@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import idEnc from 'hypercore-id-encoding'
 import b4a from 'b4a'
-import { loadOrCreateSeed, keyPairFromSeed, publicKeyZ32, generateSeed, writeSeed } from '../../src/keys.js'
+import { loadOrCreateSeed, resolveSeed, seedSource, keyPairFromSeed, publicKeyZ32, generateSeed, writeSeed } from '../../src/keys.js'
 
 function tmpDir () {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'mirall-relay-keys-'))
@@ -133,5 +133,62 @@ test('an absent secret path falls through to the seed file', () => {
     seedSecretFile: path.join(dir, 'no-such-secret'),
     seedFile: path.join(dir, 'seed')
   })
+  assert.equal(seed.byteLength, 32)
+})
+
+test('seedSource names the precedence loadOrCreateSeed actually follows', () => {
+  const dir = tmpDir()
+  const seedFile = path.join(dir, 'seed')
+  const secretFile = path.join(dir, 'secret')
+
+  assert.deepEqual(seedSource({}), { from: 'none', path: null })
+  assert.deepEqual(seedSource({ seedFile }), { from: 'file', path: seedFile })
+  assert.deepEqual(
+    seedSource({ seed: 'ab'.repeat(32), seedFile }),
+    { from: 'env', path: null },
+    'an explicit seed wins over everything'
+  )
+  // A secret file that is configured but absent falls through to the seed file —
+  // which is what makes the Docker default of /run/secrets/relay_seed harmless.
+  assert.deepEqual(seedSource({ seedSecretFile: secretFile, seedFile }), { from: 'file', path: seedFile })
+
+  fs.writeFileSync(secretFile, 'cd'.repeat(32))
+  assert.deepEqual(seedSource({ seedSecretFile: secretFile, seedFile }), { from: 'secret-file', path: secretFile })
+})
+
+test('resolveSeed says whether the identity was READ or MINTED', () => {
+  // seedSource() answers "where would it look", which is byte-identical before and
+  // after a seed is created — so on its own it cannot tell a persisted identity
+  // from one invented on this boot. That distinction is the whole reason
+  // OPERATIONS.md sends operators to the status page's seed line: a container run
+  // without a volume looks healthy right up to the replacement that strands
+  // every client.
+  const dir = tmpDir()
+  const seedFile = path.join(dir, 'seed')
+
+  const first = resolveSeed({ seedFile })
+  assert.equal(first.created, true, 'minted on this call')
+  assert.equal(first.from, 'file')
+  assert.equal(first.path, seedFile)
+
+  const second = resolveSeed({ seedFile })
+  assert.equal(second.created, false, 'read back on the next call')
+  assert.deepEqual(second.seed, first.seed, 'and it is the same identity')
+})
+
+test('a supplied seed is never reported as created', () => {
+  assert.equal(resolveSeed({ seed: 'ab'.repeat(32) }).created, false)
+
+  const dir = tmpDir()
+  const secretFile = path.join(dir, 'secret')
+  fs.writeFileSync(secretFile, 'cd'.repeat(32))
+  const resolved = resolveSeed({ seedSecretFile: secretFile, seedFile: path.join(dir, 'seed') })
+  assert.equal(resolved.created, false)
+  assert.equal(resolved.from, 'secret-file')
+})
+
+test('loadOrCreateSeed keeps its buffer contract for existing callers', () => {
+  const dir = tmpDir()
+  const seed = loadOrCreateSeed({ seedFile: path.join(dir, 'seed') })
   assert.equal(seed.byteLength, 32)
 })
