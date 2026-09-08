@@ -16,14 +16,23 @@ services:
     network_mode: host
     #
     # (b) explicit publishing. Comment out network_mode above and uncomment this.
-    #     Verify with `curl 127.0.0.1:9200/readyz` -> "firewalled": false.
+    #     Verify at http://127.0.0.1:9200 -> "Reachable", or with
+    #     `curl 127.0.0.1:9200/readyz` -> "firewalled": false.
+    #     NOTE: also set MIRALL_RELAY_ADMIN_HOST to 0.0.0.0 below. Under bridge
+    #     networking Docker forwards the published port to the CONTAINER's
+    #     address, which a socket listening on the container's own loopback never
+    #     sees — the admin port would refuse every connection.
     # ports:
     #   - "49737:49737/udp"
     #   - "127.0.0.1:9200:9200/tcp"
 
     environment:
       MIRALL_RELAY_PORT: "49737" # pinned so firewall/NAT rules stay stable
-      MIRALL_RELAY_ADMIN_HOST: "127.0.0.1" # with host networking, keep admin local
+      # With host networking, keep the admin surface — status page included — local.
+      # If you switch to the ports: block above, this MUST become 0.0.0.0, and you
+      # should then set MIRALL_RELAY_ADMIN_ALLOWED_HOSTS to keep the
+      # DNS-rebinding check on (see the README).
+      MIRALL_RELAY_ADMIN_HOST: "127.0.0.1"
       MIRALL_RELAY_ADMIN_PORT: "9200"
       MIRALL_RELAY_REGION: "eu-fsn1"
       MIRALL_RELAY_OPERATOR: "example"
