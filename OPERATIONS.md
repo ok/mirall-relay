@@ -18,6 +18,12 @@ mirall-relay keygen --out /var/lib/mirall-relay/seed
 1. Store the seed in your secret manager **and** keep an offline backup.
 2. Record the public key. This is what you publish and what users paste.
 3. Verify the file is `0600` and owned by the service user.
+4. Open the status page (`http://localhost:9200`) and check the **Identity seed**
+   line. It names the file the running process read, and — the part that matters —
+   says in red when the identity was *generated on this start* rather than found.
+   A path inside a container with no volume mounted at it looks perfectly healthy
+   right up to the moment the container is replaced; this is the one place that
+   distinguishes the two before it costs you the key.
 
 **Losing the seed is unrecoverable.** Every client configured with the derived
 public key will silently fail to reach you, exactly like losing an OTA signing
@@ -58,15 +64,25 @@ Requirements that are not negotiable:
 ## 3. Networking and reachability
 
 HyperDHT hole-punches **to the relay itself**, so the relay must be directly
-reachable. Verify after every deploy:
+reachable. Verify after every deploy — the status page states the verdict and, when
+it is bad, the steps:
 
 ```sh
+open http://localhost:9200          # or, headless:
 curl -s localhost:9200/readyz
 # {"ready":true,"firewalled":false,"publicKey":"…"}
 ```
 
 `firewalled: true` → clients cannot reach you. Check, in order: the host firewall,
 the cloud security group, and whether the UDP port is actually forwarded.
+
+Two states the page separates that `/readyz` does not:
+
+- **Assumed reachable.** `MIRALL_RELAY_ASSUME_REACHABLE` makes `firewalled` read
+  `false` whether or not anything was measured. The page says so; `/readyz` cannot.
+- **Symmetric NAT.** A NAT that assigns a different external port per destination
+  reports `firewalled: false` and is still unusable as a relay. The page raises it
+  from `dht.randomized`; nothing else does.
 
 **Docker networking.** `network_mode: host` is the reliable choice. Publishing
 UDP with `-p 49737:49737/udp` works on many hosts but Docker's userland proxy and
@@ -146,9 +162,10 @@ restart. Both take effect for new links immediately.
 
 ### The relay is up but nothing connects
 
-In order: `/readyz` → `firewalled`; UDP reachability from outside; whether the
-published public key matches `/.well-known/mirall-relay.json` (a lost seed is the
-usual cause); `scripts/probe.js` from another machine.
+In order: the status page's reachability verdict (or `/readyz` → `firewalled`); UDP
+reachability from outside; whether the published public key matches the one on the
+page (a lost seed is the usual cause — check the **Identity seed** line);
+`scripts/probe.js` from another machine.
 
 ### Restart
 

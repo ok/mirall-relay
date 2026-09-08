@@ -4,8 +4,9 @@ A **blind relay** for [Mirall](https://mirall.app). It connects two peers that
 cannot reach each other directly — office Wi-Fi, mobile hotspots, symmetric NAT,
 UDP-filtered networks — without ever being able to read what they send.
 
-Anyone can run one. Start it, publish the public key it prints, and paste that key
-into Mirall under **Settings → Network**.
+Anyone can run one. Start it, open `http://localhost:9200` for the public key and
+whether the world can actually reach you, then paste that key into Mirall under
+**Settings → Network**.
 
 ---
 
@@ -41,14 +42,18 @@ docker run --rm ghcr.io/ok/mirall-relay:latest bin/mirall-relay.js keygen
 # 2. Run it. The named volume is what keeps the identity stable.
 docker compose up -d
 
-# 3. Verify it is actually reachable.
+# 3. Open the status page. It has the public key, a QR of it, whether you are
+#    actually reachable, and the relayed-bytes counter.
+open http://localhost:9200
+
+# …or, on a headless host, ask the same questions over curl:
 curl -s localhost:9200/readyz
 # {"ready": true, "firewalled": false, "publicKey": "…"}
 ```
 
-`"firewalled": true` means clients cannot reach you — open UDP 49737 and try
-again. A firewalled relay starts, logs an error, returns 503 on `/readyz`, and
-serves nothing.
+`"firewalled": true` — **Not reachable** on the page — means clients cannot reach
+you. Open UDP 49737 and try again. A firewalled relay starts, logs an error,
+returns 503 on `/readyz`, and serves nothing.
 
 ### Running it locally (Docker Desktop) — smoke test only
 
@@ -62,7 +67,7 @@ docker run -d --name mirall-relay \
   -v mirall-relay-data:/data \
   mirall-relay:local
 
-curl -s localhost:9200/readyz
+open http://localhost:9200
 ```
 
 On a laptop this will report **`"firewalled": true`** and `/readyz` will return
@@ -136,7 +141,9 @@ CLI flag. Run `mirall-relay --help` for the full list; the essentials:
 | `MIRALL_RELAY_SEED_SECRET_FILE` | `/run/secrets/relay_seed` | Mounted secret holding the seed. Read in-process; wins over `SEED_FILE`. |
 | `MIRALL_RELAY_PORT` | `49737` | UDP port. Pin it so firewall rules stay stable. |
 | `MIRALL_RELAY_ASSUME_REACHABLE` | `false` | Skip reachability probing. Only set it when you *know* the host is public. |
-| `MIRALL_RELAY_ADMIN_HOST` | `127.0.0.1` | Admin/metrics bind. **Never expose publicly.** |
+| `MIRALL_RELAY_ADMIN_HOST` | `127.0.0.1` | Admin/metrics/status-page bind. **Never expose publicly.** |
+| `MIRALL_RELAY_ADMIN_UI` | `true` | The browser status page. `false` leaves only the JSON endpoints. |
+| `MIRALL_RELAY_ADMIN_ALLOWED_HOSTS` | — | Extra `Host` values to accept. Only consulted on a loopback bind — see below. |
 | `MIRALL_RELAY_ALLOWLIST` | — | Private relay: only these keys may connect. Everyone else is refused. |
 | `MIRALL_RELAY_BANLIST` | — | Public relay: these keys are refused, everyone else is allowed. |
 | `MIRALL_RELAY_MAX_SESSIONS_PER_KEY` | `64` | Sessions per peer **device**. See the note below. |
@@ -193,10 +200,52 @@ Bound to `127.0.0.1:9200` by default.
 
 | Path | Purpose |
 |---|---|
+| `/` | **Status page.** Public key with copy and QR, the reachability verdict in plain language, live counters. |
+| `/status.json` | Everything the page shows, as data. |
+| `/qr.svg` | The public key as a scannable square, to save or print. |
 | `/healthz` | Process is up. |
 | `/readyz` | Listening, bootstrapped, and **not** firewalled. 503 otherwise. |
 | `/metrics` | Prometheus. See `deploy/prometheus-scrape.example.yml` for the alerts worth having. |
 | `/.well-known/mirall-relay.json` | Public key, region, operator, caps. |
+
+### The status page
+
+Everything a relay operator needs and every mistake they can make, on one screen:
+the key to publish, whether peers can actually reach you, where the seed is being
+read from, and how many bytes you have paid for. It is server-rendered, so it works
+with JavaScript disabled and `curl -s localhost:9200/ | grep` still finds the key;
+with JavaScript it refreshes the counters every five seconds.
+
+The page is **read-only and unauthenticated**, like the rest of the admin port. It
+carries nothing secret — the seed is never rendered, only the path it is read from.
+There is deliberately no "test reachability" button: that would let an
+unauthenticated port be made to do work. Use `scripts/probe.js` from another
+machine instead.
+
+**Host checking.** A page on the internet can point its own hostname at
+`127.0.0.1` and read this port out of your browser (DNS rebinding). The request
+still carries the name the browser resolved, so:
+
+- When the admin server is **bound to loopback**, a `Host` that is neither a
+  loopback name nor an IP literal is refused with 403.
+- On **any other bind** the check is off by default, because a platform proxy
+  (Umbrel, StartOS) legitimately sets its own `Host` and the process cannot tell
+  from its bind address whether the port is private.
+- Setting `MIRALL_RELAY_ADMIN_ALLOWED_HOSTS` **turns the check on regardless of
+  bind**, and adds those names to it. This is how a container deployment opts in —
+  `docker run -p 127.0.0.1:9200:…` binds `0.0.0.0` inside the container, so the
+  default cannot protect it.
+
+The check covers only the browser surface (`/`, `/status.json`, `/qr.svg` and the
+page assets). `/healthz`, `/readyz`, `/metrics` and the capability doc keep their
+previous contract, because deployments address them by hostname — a Prometheus
+target, an `/etc/hosts` alias — and 403ing those on upgrade would take monitoring
+down while looking like a network fault. If `/metrics` being readable matters to
+you, put authentication in front of the port.
+
+**Behind a path-prefix proxy**, mount the page at a path with a trailing slash
+(`/relay/`, not `/relay`). Every URL on the page is document-relative so that a
+prefix works at all, and a browser resolves `ui.css` under `/relay` as `/ui.css`.
 
 ---
 
@@ -254,7 +303,12 @@ holds.
 
 - The seed is the only secret and the only durable state. Losing it strands every
   client configured with the derived public key. Back it up offline.
-- The admin port exposes internals; keep it on loopback or a private network.
+- The admin port exposes internals; keep it on loopback or a private network. That
+  includes the status page, which is unauthenticated. It shows the seed's *path*,
+  never the seed.
+- The status page states whether the identity was **read** from that path or
+  **generated on this start**. A relay that generated one is one restart away from
+  a different public key unless the path is persistent storage.
 
 See [SECURITY.md](SECURITY.md) for what to report, what is already known and
 documented, and how to reach us privately.
