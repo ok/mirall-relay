@@ -52,6 +52,14 @@ export function makeMetrics ({ collectDefault = true } = {}) {
       name: 'relay_dht_firewalled',
       help: '1 when our DHT node believes it is firewalled — a relay in this state is useless'
     }),
+    // Without this, relay_dht_firewalled is unfalsifiable: MIRALL_RELAY_ASSUME_REACHABLE
+    // forces it to 0 whether or not anything was measured, so an alert on it can
+    // never fire for the relay that was simply never probed.
+    reachabilityProbed: new client.Gauge({
+      registers,
+      name: 'relay_reachability_probed',
+      help: '1 when relay_dht_firewalled came from hyperdht probing, 0 when it was asserted with MIRALL_RELAY_ASSUME_REACHABLE'
+    }),
     ready: new client.Gauge({
       registers,
       name: 'relay_ready',

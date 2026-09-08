@@ -79,7 +79,11 @@ the cloud security group, and whether the UDP port is actually forwarded.
 Two states the page separates that `/readyz` does not:
 
 - **Assumed reachable.** `MIRALL_RELAY_ASSUME_REACHABLE` makes `firewalled` read
-  `false` whether or not anything was measured. The page says so; `/readyz` cannot.
+  `false` whether or not anything was measured. The page says so in words;
+  `/readyz` reports it as `probed: false` and `/metrics` as
+  `relay_reachability_probed 0`. Anything consuming only `firewalled` — a
+  platform health check, an uptime probe — is reporting a fact nobody
+  established.
 - **Symmetric NAT.** A NAT that assigns a different external port per destination
   reports `firewalled: false` and is still unusable as a relay. The page raises it
   from `dht.randomized`; nothing else does.
@@ -129,6 +133,7 @@ actually matter:
 | Signal | Why it matters |
 |---|---|
 | `relay_dht_firewalled == 1` | You are advertising a key nobody can reach. |
+| `relay_reachability_probed == 0` | Reachability was asserted, not measured — so the row above is forced to 0 and can never fire. |
 | `relay_ready == 0` | Not listening or not bootstrapped. |
 | `relay_links_active` near `maxActiveLinks` | About to start refusing connections. |
 | `rate(relay_bytes_relayed_total[1h])` | Your bill. Project it monthly against your egress budget. |

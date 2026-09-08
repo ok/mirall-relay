@@ -138,6 +138,7 @@ export class RelayNode {
     this.startedAt = Date.now()
     this.metrics?.m.ready.set(1)
     this.metrics?.m.dhtFirewalled.set(this.firewalled ? 1 : 0)
+    this.metrics?.m.reachabilityProbed.set(cfg.assumeReachable ? 0 : 1)
 
     if (this.seedSource.created) {
       logger?.warn(

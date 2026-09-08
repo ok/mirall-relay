@@ -13,6 +13,11 @@ scrape_configs:
 #   relay_dht_firewalled == 1
 #     The relay cannot be reached. It is advertising a key nobody can use.
 #
+#   relay_reachability_probed == 0
+#     Reachability was ASSERTED with MIRALL_RELAY_ASSUME_REACHABLE, not measured,
+#     so relay_dht_firewalled is forced to 0 and can never fire. Without this
+#     alert an unreachable relay behind that flag looks perfectly healthy.
+#
 #   relay_ready == 0
 #     Not listening or not bootstrapped.
 #

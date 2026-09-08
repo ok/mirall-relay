@@ -189,6 +189,11 @@ export function makeAdminServer (cfg, { metrics, relay, firewall, logger }) {
           return json(res, ok ? 200 : 503, {
             ready: relay.ready,
             firewalled,
+            // Additive, and the point of the whole field: ASSUME_REACHABLE forces
+            // `firewalled` to false, so on its own it cannot tell a verified relay
+            // from one that was told to assume. Anything consuming this endpoint —
+            // a platform health check, an uptime probe — needs both.
+            probed: !cfg.assumeReachable,
             publicKey: relay.publicKeyZ32
           })
         }
