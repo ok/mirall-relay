@@ -204,7 +204,7 @@ Bound to `127.0.0.1:9200` by default.
 | `/status.json` | Everything the page shows, as data. |
 | `/qr.svg` | The public key as a scannable square, to save or print. |
 | `/healthz` | Process is up. |
-| `/readyz` | Listening, bootstrapped, and **not** firewalled. 503 otherwise. |
+| `/readyz` | Listening, bootstrapped, and **not** firewalled. 503 otherwise. `probed` says whether that verdict was measured. |
 | `/metrics` | Prometheus. See `deploy/prometheus-scrape.example.yml` for the alerts worth having. |
 | `/.well-known/mirall-relay.json` | Public key, region, operator, caps. |
 

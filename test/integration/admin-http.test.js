@@ -110,3 +110,30 @@ test('the admin surface binds to loopback only', async (t) => {
   assert.equal(relay.cfg.adminHost, '127.0.0.1', 'never expose relay internals publicly by default')
   assert.equal(relay.admin.server.address().address, '127.0.0.1')
 })
+
+test('/readyz and /metrics both say whether reachability was measured', async (t) => {
+  // ASSUME_REACHABLE forces firewalled:false, so on its own that field cannot
+  // tell a verified relay from one that was told to assume. A platform health
+  // check reading only `firewalled` reports "reachable from the internet" on
+  // evidence that does not exist — which is what every StartOS surface did.
+  const { base } = await withRelay(t)
+  const body = await (await fetch(base + '/readyz')).json()
+  assert.equal(body.firewalled, false)
+  assert.equal(body.probed, false, 'the test rig sets ASSUME_REACHABLE')
+
+  const text = await (await fetch(base + '/metrics')).text()
+  assert.match(text, /relay_dht_firewalled 0/)
+  assert.match(text, /relay_reachability_probed 0/, 'the alertable form of the same fact')
+  assert.match(text, /# HELP relay_reachability_probed .*asserted/)
+})
+
+test('a relay that probes for itself reports probed on both surfaces', async (t) => {
+  const testnet = await createTestnet(4)
+  // Override the rig's ASSUME_REACHABLE so hyperdht makes its own determination.
+  const relay = await startTestRelay(testnet, { MIRALL_RELAY_ASSUME_REACHABLE: 'false' }, { admin: true })
+  t.after(async () => { await relay.stop(); await testnet.destroy() })
+  const base = `http://127.0.0.1:${relay.admin.server.address().port}`
+
+  assert.equal((await (await fetch(base + '/readyz')).json()).probed, true)
+  assert.match(await (await fetch(base + '/metrics')).text(), /relay_reachability_probed 1/)
+})
