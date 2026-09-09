@@ -180,7 +180,11 @@ In a container, through the node entrypoint (there is no shell):
 docker exec mirall-relay /nodejs/bin/node bin/mirall-relay.js invite create ben
 ```
 
-Or over HTTP, which is the path for platforms with no shell at all:
+Or in a browser at **`http://localhost:9200/admin/`** — paste the admin token
+once and add or revoke members from there. This is the path for StartOS, Umbrel
+and anything else with no shell.
+
+Or over HTTP directly:
 
 ```sh
 TOKEN=$(cat /var/lib/mirall-relay/admin-token)
