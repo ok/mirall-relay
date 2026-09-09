@@ -278,13 +278,18 @@ Bound to `127.0.0.1:9200` by default.
 | `/readyz` | Listening, bootstrapped, and **not** firewalled. 503 otherwise. `probed` says whether that verdict was measured. |
 | `/metrics` | Prometheus. See `deploy/prometheus-scrape.example.yml` for the alerts worth having. |
 | `/.well-known/mirall-relay.json` | Public key, region, operator, caps. |
-| `/admin/` | **Members page.** Add, show and revoke invites. Needs the admin token. |
-| `/admin/invites` | The same as JSON. `POST` to mint, `GET` to list, `DELETE /admin/invites/<label>` to revoke. |
-| `/admin/bans` | `POST {key, ttlMs?}` to ban, `DELETE /admin/bans/<key>` to clear. |
+| `/admin/` | **Members page.** Add, show and revoke invites. The page itself is a static shell — see below. |
+| `/admin/invites` | The same as JSON, **token required**. `POST` to mint, `GET` to list, `GET /admin/invites/<label>?reveal=1` for one ticket, `DELETE /admin/invites/<label>` to revoke. |
+| `/admin/bans` | **Token required.** `POST {key, ttlMs?}` to ban, `DELETE /admin/bans/<key>` to clear. |
 
-Everything above `/admin/` is **anonymous and read-only**. Everything from
-`/admin/` down needs `Authorization: Bearer <token>` and is removed entirely by
-`MIRALL_RELAY_ADMIN_WRITE=false`.
+Everything above `/admin/` is **anonymous and read-only**. Everything under
+`/admin/` that returns a name or a secret needs `Authorization: Bearer <token>`,
+and the whole prefix is removed by `MIRALL_RELAY_ADMIN_WRITE=false`.
+
+The three exceptions are the members page and its assets — `/admin/`,
+`/admin/style.css`, `/admin/app.js` and `/admin/copy-button.js` — which are served
+without a token because a `<link>` cannot send one. They are a static shell with
+no member data in them; see below.
 
 ### The members page
 
@@ -298,9 +303,10 @@ labels and invite tickets, so it sits behind the token.
 
 The page itself is a static shell — every label, key and ticket arrives over an
 authenticated request, and the shell is what asks for the token. That is why the
-page and its two assets are the only paths under `/admin/` served without one: a
+page and its assets are the only paths under `/admin/` served without one: a
 `<link>` cannot send an `Authorization` header, so requiring it there would mean
-no page could ever load to collect the token.
+no page could ever load to collect the token. The shell contains no member data
+and does not change when the roster does.
 
 The token is held in `sessionStorage` for that browser tab only — closing the tab
 forgets it, and it is never written to disk by the browser. It is deliberately not

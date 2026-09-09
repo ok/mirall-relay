@@ -32,7 +32,9 @@ Also in scope:
 - Bypassing admission control (`ACCESS` / `ALLOWLIST` / `BANLIST`), invite
   membership, or the byte, rate, duration and concurrency caps.
 - Bypassing the `/admin/*` bearer token, or reaching any write through the
-  anonymous status surface.
+  anonymous status surface. Four paths are served **without** the token by
+  design — see the known-issues note below — and reports about those are not
+  bypasses; anything else under `/admin/` is.
 - Anything that exposes the seed, a member seed or ticket, a member label, the
   admin token, a pairing token, or relayed payload bytes — in logs, metrics, the
   admin HTTP surface, or an error path.
@@ -53,6 +55,14 @@ make an informed choice:
 - **The admin HTTP surface exposes internals.** It binds to `127.0.0.1` by
   default; exposing it publicly is a misconfiguration, not a vulnerability. The
   bearer token protects the `/admin/*` writes, not the port.
+- **The members page and its assets are served without the token.** `/admin/`,
+  `/admin/style.css`, `/admin/app.js` and `/admin/copy-button.js` answer 200 to an
+  unauthenticated request. This is deliberate and unavoidable: a `<link>` and a
+  `<script src>` cannot send an `Authorization` header, so requiring one would
+  mean no page could ever load to collect the token. They are a static shell with
+  empty slots — no label, key or ticket is in them, and the bytes do not change
+  when the roster does. Every path that returns member data still requires the
+  token. `MIRALL_RELAY_ADMIN_WRITE=false` removes all of it.
 - **An invite ticket is a bearer credential.** Anyone the holder forwards it to
   becomes that member. There is no cryptographic fix while a person's devices
   share one member key; the controls are `MAX_SESSIONS_PER_KEY` and revocation.
