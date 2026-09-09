@@ -6,25 +6,36 @@ import path from 'node:path'
 import createTestnet from 'hyperdht/testnet.js'
 import DHT from 'hyperdht'
 import Relay from 'blind-relay'
+import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import { loadConfig } from '../../src/config.js'
 import { createRelay } from '../../src/index.js'
 
 export { createTestnet }
 
-function tmpSeedFile () {
+// One throwaway directory per relay, standing in for ./.keys — the seed, the
+// roster and the admin token all live beside each other in a real deployment,
+// and a test that left the defaults alone would write them into the repo.
+function tmpKeyDir () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirall-relay-test-'))
-  return { dir, file: path.join(dir, 'seed') }
+  return {
+    dir,
+    seed: path.join(dir, 'seed'),
+    roster: path.join(dir, 'members.json'),
+    token: path.join(dir, 'admin-token')
+  }
 }
 
 // Build a config from DEFAULTS with test-appropriate overrides. Anything not
 // named here keeps the production default, so the tests exercise the real values.
 export function testConfig (testnet, overrides = {}) {
   const bootstrap = testnet.bootstrap.map((b) => `${b.host}:${b.port}`).join(',')
-  const { file } = tmpSeedFile()
+  const keys = tmpKeyDir()
   const env = {
     MIRALL_RELAY_BOOTSTRAP: bootstrap,
-    MIRALL_RELAY_SEED_FILE: file,
+    MIRALL_RELAY_SEED_FILE: keys.seed,
+    MIRALL_RELAY_ROSTER_FILE: keys.roster,
+    MIRALL_RELAY_ADMIN_TOKEN_FILE: keys.token,
     MIRALL_RELAY_HOST: '127.0.0.1',
     MIRALL_RELAY_PORT: '0', // let the OS pick, so suites can run in parallel
     MIRALL_RELAY_ADMIN_PORT: '0',
@@ -68,6 +79,15 @@ export async function makeEchoPeer (testnet, opts = {}) {
     publicKey: server.publicKey,
     destroy: () => dht.destroy().catch(() => {})
   }
+}
+
+// A DHT node whose identity is a ticket's member seed — what a Mirall client
+// configured with that invite will present to the relay. The node's
+// defaultKeyPair IS the member identity, because hyperdht dials a relay with
+// dht.defaultKeyPair and no per-connection keypair (connect.js:47,793).
+export function makeMemberNode (testnet, memberSeed) {
+  const dht = new DHT({ bootstrap: testnet.bootstrap, keyPair: crypto.keyPair(memberSeed) })
+  return { dht, publicKey: dht.defaultKeyPair.publicKey, destroy: () => dht.destroy().catch(() => {}) }
 }
 
 export async function makeDialer (testnet, opts = {}) {

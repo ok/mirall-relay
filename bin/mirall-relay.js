@@ -3,6 +3,7 @@
 import { loadConfig } from '../src/config.js'
 import { startRelay, stopRelay, VERSION } from '../src/index.js'
 import { keygenCommand } from './keygen.js'
+import { inviteCommand } from './invite.js'
 
 const USAGE = `mirall-relay ${VERSION}
 
@@ -12,6 +13,7 @@ const USAGE = `mirall-relay ${VERSION}
 USAGE
   mirall-relay [options]            start the relay
   mirall-relay keygen [--out FILE]  generate an identity (seed + public key)
+  mirall-relay invite <command>     manage membership (see below)
   mirall-relay --help
 
 OPTIONS  (every flag has a MIRALL_RELAY_* environment equivalent)
@@ -30,6 +32,12 @@ OPTIONS  (every flag has a MIRALL_RELAY_* environment equivalent)
   --admin-ui BOOL            serve the browser status page       [true]
   --admin-allowed-hosts H,.. extra Host values accepted when the
                              admin server is bound to loopback   [none]
+  --admin-write BOOL         serve the token-gated /admin/* write
+                             surface; false removes it entirely  [true]
+  --admin-token TOKEN        bearer token for /admin/*; prefer the
+                             file, env vars leak into inspect    [none]
+  --admin-token-file PATH    token file, generated and logged on
+                             first boot              [./.keys/admin-token]
 
   --max-sessions-per-key N   sessions per peer DEVICE key        [64]
   --max-active-links N       global bridged-stream ceiling       [2000]
@@ -42,17 +50,32 @@ OPTIONS  (every flag has a MIRALL_RELAY_* environment equivalent)
                              link is torn for exceeding its rate  [5000]
   --meter-ms N               cap sampling interval               [1000]
 
-  --allowlist KEY,...        private relay: only these keys may connect
+  --access MODE              open | invite. invite admits only roster
+                             members and --allowlist keys        [open]
+  --roster-file PATH         members.json; as secret as the seed
+                                                     [./.keys/members.json]
+  --allowlist KEY,...        static keys admitted, unioned with the roster
   --banlist KEY,...          keys refused at connect time
   --region NAME              label for metrics and /.well-known  [unknown]
   --operator NAME            label for metrics and /.well-known  [unknown]
   --log-level LEVEL          trace|debug|info|warn|error|fatal   [info]
+
+INVITE
+  mirall-relay invite create <label>   mint an invite and print the ticket
+  mirall-relay invite list             labels, keys, created, revoked
+  mirall-relay invite show <label>     reprint an existing ticket
+  mirall-relay invite revoke <label>   revoke; a running relay drops them in ~5s
 `
 
 const argv = process.argv.slice(2)
 
 if (argv[0] === 'keygen') {
   keygenCommand(argv.slice(1))
+  process.exit(0)
+}
+
+if (argv[0] === 'invite') {
+  inviteCommand(argv.slice(1))
   process.exit(0)
 }
 

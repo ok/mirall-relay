@@ -37,12 +37,24 @@ function fakeRelay (overrides = {}) {
   }
 }
 
-function build (env = {}, relayOverrides = {}) {
+// Counts only — the snapshot must never be able to reach a label.
+function fakeRoster (active = 0, total = active) {
+  return { active, total, file: '/data/members.json', members: { has: () => false, size: active } }
+}
+
+function build (env = {}, relayOverrides = {}, roster = null) {
   const cfg = loadConfig([], { MIRALL_RELAY_SEED: SEED, ...env })
   const metrics = makeMetrics({ collectDefault: false })
-  const firewall = makeFirewall(cfg, metrics)
+  const firewall = makeFirewall(cfg, metrics, roster ? { members: roster.members } : {})
   const relay = fakeRelay(relayOverrides)
-  return { cfg, metrics, firewall, relay, snapshot: () => statusSnapshot({ cfg, relay, metrics, firewall, version: relay.version }) }
+  return {
+    cfg,
+    metrics,
+    firewall,
+    relay,
+    roster,
+    snapshot: () => statusSnapshot({ cfg, relay, metrics, firewall, roster, version: relay.version })
+  }
 }
 
 test('reachabilityState reports what the DHT believes', () => {
@@ -179,4 +191,57 @@ test('the bound address is normalised, whatever udx calls the host field', async
   }).snapshot()
   assert.equal(status.reachability.bound.host, '0.0.0.0')
   assert.equal(status.reachability.bound.port, 49737)
+})
+
+test('access mode reports invite', async () => {
+  const status = await build({ MIRALL_RELAY_ACCESS: 'invite' }, {}, fakeRoster(2, 3)).snapshot()
+  assert.equal(status.access.mode, 'invite')
+  assert.deepEqual(status.access.members, { active: 2, total: 3 })
+})
+
+test('access mode still reports allowlist and open', async () => {
+  // Regression on both: an existing operator's configuration means what it did.
+  assert.equal((await build().snapshot()).access.mode, 'open')
+  assert.equal((await build({ MIRALL_RELAY_ALLOWLIST: 'a'.repeat(64) }).snapshot()).access.mode, 'allowlist')
+})
+
+test('invite mode with an empty roster reports zero members, not "open"', async () => {
+  // The operator staring at the page wondering why nobody connects needs this
+  // to say "invite, 0 members", never "open".
+  const status = await build({ MIRALL_RELAY_ACCESS: 'invite' }, {}, fakeRoster(0)).snapshot()
+  assert.equal(status.access.mode, 'invite')
+  assert.equal(status.access.members.active, 0)
+  assert.equal(status.access.allowlisted, 0, 'gated with nobody admitted')
+})
+
+test('the snapshot carries member counts, never labels', async () => {
+  const { snapshot } = build({ MIRALL_RELAY_ACCESS: 'invite' }, {}, {
+    active: 1,
+    total: 1,
+    file: '/data/members.json',
+    members: { has: () => false, size: 1 },
+    // Present on the real roster, and the snapshot must not reach for them.
+    list: () => [{ label: 'ben', seedHex: 'ab'.repeat(32) }],
+    listPublic: () => [{ label: 'ben' }]
+  })
+  const text = JSON.stringify(await snapshot())
+  assert.ok(!text.includes('ben'), 'a label is a person\'s name')
+  assert.ok(!text.includes('members.json'), 'not even the path to the secret')
+  assert.ok(!/[0-9a-f]{64}/i.test(text))
+})
+
+test('refusedLastHour is reported', async () => {
+  const { firewall, snapshot } = build({ MIRALL_RELAY_ACCESS: 'invite' }, {}, fakeRoster(0))
+  assert.equal((await snapshot()).access.refusedLastHour, 0)
+
+  firewall.firewall(Buffer.alloc(32, 9))
+  firewall.firewall(Buffer.alloc(32, 8))
+  assert.equal((await snapshot()).access.refusedLastHour, 2, 'the page mirrors the firewall')
+})
+
+test('a snapshot without a roster still renders', async () => {
+  // src/status.js is called from tests and tools that have no roster to hand.
+  const status = await build().snapshot()
+  assert.equal(status.access.members, null)
+  assert.equal(status.access.refusedLastHour, 0)
 })

@@ -11,13 +11,21 @@
 //   GET /metrics                        Prometheus text
 //   GET /.well-known/mirall-relay.json  capability doc (public key, region, caps)
 //
-// Everything here is still a read. There is deliberately no "test reachability"
-// button: scripts/probe.js stands up two throwaway DHT nodes, and putting that
-// behind an unauthenticated port turns a diagnostic surface into one that can be
-// made to do work.
+// Every one of those is anonymous and a read. There is deliberately no "test
+// reachability" button: scripts/probe.js stands up two throwaway DHT nodes, and
+// putting that behind an unauthenticated port turns a diagnostic surface into
+// one that can be made to do work.
+//
+// /admin/* is the one exception and is kept strictly apart from the above:
+// minting an invite is a write THAT EMITS A SECRET, so it takes a bearer token.
+// The rule for the split is that the anonymous page shows numbers, never names
+// or secrets — member labels and tickets exist only behind the token.
 import http from 'node:http'
 import net from 'node:net'
-import { mirrorRelayStats } from './metrics.js'
+import b4a from 'b4a'
+import idEnc from 'hypercore-id-encoding'
+import { decodeKeyOrThrow } from './config.js'
+import { mirrorMembers, mirrorRelayStats } from './metrics.js'
 import { capabilityDoc, statusSnapshot } from './status.js'
 import { loadAssets, uiPaths, etagFor, renderPage, standaloneQr } from './admin-ui.js'
 
@@ -123,7 +131,64 @@ function cached (req, res, body, type, etag) {
   return send(res, 200, body, type, { etag, 'cache-control': 'no-cache' })
 }
 
-export function makeAdminServer (cfg, { metrics, relay, firewall, logger }) {
+// Small on purpose: every body this surface accepts is a label or a key.
+const MAX_BODY = 4096
+
+function readJson (req) {
+  return new Promise((resolve, reject) => {
+    let size = 0
+    let done = false
+    const chunks = []
+    req.on('data', (chunk) => {
+      if (done) return
+      size += chunk.length
+      if (size > MAX_BODY) {
+        done = true
+        // Stop reading, but do NOT destroy the request: the response shares that
+        // socket, and destroying it turns a 413 into a connection reset the
+        // client can only report as "fetch failed".
+        req.pause()
+        reject(Object.assign(new Error('body too large'), { status: 413 }))
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (!chunks.length) return resolve({})
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
+      } catch {
+        reject(Object.assign(new Error('body is not JSON'), { status: 400 }))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+// A ttlMs that is present but not a positive finite number would fall through
+// firewall.ban's `ttlMs > 0` test and become a PERMANENT ban, which is not what
+// anyone who typed "1h" or sent a 0 meant — and the only way back is a DELETE.
+function banTtl (value) {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw Object.assign(new Error('ttlMs must be a positive number of milliseconds'), { status: 400 })
+  }
+  return value
+}
+
+// The same normalisation the firewall does at its top: z-base-32 or hex in,
+// 32-byte hex out, throwing on anything else. decodeKeyOrThrow's error carries
+// no code, and an unparsable key from a client is a 400 rather than the 500 the
+// status ladder would otherwise give it.
+function hexOfKey (value) {
+  try {
+    return b4a.toString(decodeKeyOrThrow(value), 'hex')
+  } catch (err) {
+    throw Object.assign(err, { status: 400 })
+  }
+}
+
+export function makeAdminServer (cfg, { metrics, relay, firewall, roster, meter, auth, logger }) {
   // The square only changes when the identity does, which is never.
   let qrCache = null
   function qrFor (publicKey) {
@@ -134,18 +199,97 @@ export function makeAdminServer (cfg, { metrics, relay, firewall, logger }) {
     return qrCache
   }
 
-  const snapshot = () => statusSnapshot({ cfg, relay, metrics, firewall, version: relay.version })
+  const snapshot = () => statusSnapshot({ cfg, relay, metrics, firewall, roster, version: relay.version })
+
+  // Every route behind the token. Reached only after the auth check below, so
+  // nothing here re-tests it.
+  async function adminRoute (req, res, path) {
+    const [, , resource, ...rest] = path.split('/') // '', 'admin', <resource>, <id...>
+    const reveal = /[?&]reveal=1(&|$)/.test(req.url || '')
+
+    try {
+      // Inside the try: decodeURIComponent throws URIError on a malformed escape
+      // like %zz, and outside it that rejection escaped the handler entirely —
+      // no response was ever written and the socket was pinned for good.
+      const id = rest.length ? decodeURIComponent(rest.join('/')) : null
+
+      // A ticket names the relay's public key, so there is nothing to mint or
+      // reprint until the identity exists. Same answer as /qr.svg gives.
+      if (resource === 'invites' && req.method !== 'DELETE' && !relay.publicKey) {
+        return json(res, 503, { error: 'no identity yet' })
+      }
+
+      if (resource === 'invites' && req.method === 'POST' && !id) {
+        const { label } = await readJson(req)
+        const member = roster.add(label)
+        // The label is logged; the ticket and the seed never are.
+        logger?.info({ label: member.label }, 'invite minted')
+        return json(res, 201, {
+          label: member.label,
+          publicKey: member.publicKey,
+          created: member.created,
+          ticket: roster.ticketFor(member.label, relay.publicKey)
+        })
+      }
+
+      if (resource === 'invites' && req.method === 'GET' && !id) {
+        const members = roster.listPublic().map((m) => ({
+          ...m,
+          sessions: meter.sessionCount(hexOfKey(m.publicKey)),
+          ...(reveal && !m.revoked ? { ticket: roster.ticketFor(m.label, relay.publicKey) } : {})
+        }))
+        return json(res, 200, { members, active: roster.active, total: roster.total })
+      }
+
+      if (resource === 'invites' && req.method === 'DELETE' && id) {
+        const revoked = roster.revoke(id)
+        const closed = revoked.keyHex ? relay.destroySessionsFor(revoked.keyHex) : 0
+        logger?.warn({ label: revoked.label, sessions: closed }, 'invite revoked')
+        return json(res, 200, { label: revoked.label, revoked: revoked.revoked, sessionsClosed: closed })
+      }
+
+      if (resource === 'bans' && req.method === 'POST' && !id) {
+        const { key, ttlMs } = await readJson(req)
+        const keyHex = hexOfKey(key)
+        const ttl = banTtl(ttlMs)
+        firewall.ban(keyHex, ttl)
+        const closed = relay.destroySessionsFor(keyHex)
+        return json(res, 200, {
+          key: idEnc.normalize(String(key).trim()),
+          // Echoed so a caller can see that it got the ban it asked for.
+          permanent: ttl === null,
+          ttlMs: ttl,
+          sessionsClosed: closed
+        })
+      }
+
+      if (resource === 'bans' && req.method === 'DELETE' && id) {
+        // Its own statement: inside an argument list, idEnc.normalize(id) is
+        // evaluated first and throws a code-less error, which the ladder below
+        // reports as a 500 rather than the 400 a bad key deserves.
+        const keyHex = hexOfKey(id)
+        return json(res, 200, { key: idEnc.normalize(id), wasBanned: firewall.unban(keyHex) })
+      }
+
+      return notFound(res)
+    } catch (err) {
+      // A malformed roster on disk is the server's problem; every other coded
+      // error came out of the caller's request.
+      const BY_CODE = { duplicate: 409, 'not-found': 404, malformed: 500 }
+      const status = err.status || BY_CODE[err.code] || (err.code ? 400 : 500)
+      if (status >= 500) logger?.warn({ err: err.message, path }, 'admin write failed')
+      return json(res, status, { error: err.code || 'internal error', message: err.message })
+    }
+  }
 
   const server = http.createServer(async (req, res) => {
-    // Everything here is a read; anything else is a misdirected request.
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      return json(res, 405, { error: 'method not allowed' })
-    }
-
     const path = (req.url || '').split('?')[0]
     const ui = cfg.adminUi !== false
+    const isAdmin = path === '/admin' || path.startsWith('/admin/')
 
-    if (uiPaths.has(path) && !hostAllowed(cfg, req.headers.host)) {
+    // The Host guard covers the write surface too: it is browser-reachable, and
+    // a proxy that is trusted for the page is the same proxy trusted here.
+    if ((uiPaths.has(path) || isAdmin) && !hostAllowed(cfg, req.headers.host)) {
       logger?.warn(
         { host: req.headers.host, path },
         'refused a request whose Host is neither loopback nor in MIRALL_RELAY_ADMIN_ALLOWED_HOSTS'
@@ -154,6 +298,27 @@ export function makeAdminServer (cfg, { metrics, relay, firewall, logger }) {
         error: 'host not allowed',
         hint: 'add this Host to MIRALL_RELAY_ADMIN_ALLOWED_HOSTS if it is a proxy you run'
       })
+    }
+
+    // Above the method guard, because /admin/* is the one place that legitimately
+    // takes POST and DELETE.
+    if (isAdmin) {
+      if (!cfg.adminWrite || !auth) return notFound(res)
+      if (!auth.check(req.headers.authorization)) {
+        res.setHeader('www-authenticate', 'Bearer realm="mirall-relay"')
+        return json(res, 401, { error: 'unauthorized' })
+      }
+      // node:http does not await this handler, so an escaping rejection would be
+      // a request that never answers and a socket that is never released.
+      return adminRoute(req, res, path).catch((err) => {
+        logger?.warn({ err: err.message, path }, 'admin request failed')
+        if (!res.headersSent) json(res, 500, { error: 'internal error' })
+      })
+    }
+
+    // Everything else here is a read; anything else is a misdirected request.
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return json(res, 405, { error: 'method not allowed' })
     }
 
     try {
@@ -203,6 +368,7 @@ export function makeAdminServer (cfg, { metrics, relay, firewall, logger }) {
 
         case '/metrics': {
           mirrorRelayStats(metrics, relay.relayStats())
+          mirrorMembers(metrics, roster)
           const body = await metrics.registry.metrics()
           return send(res, 200, body, metrics.registry.contentType, { 'cache-control': 'no-store' })
         }

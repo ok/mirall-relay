@@ -144,9 +144,13 @@ CLI flag. Run `mirall-relay --help` for the full list; the essentials:
 | `MIRALL_RELAY_ADMIN_HOST` | `127.0.0.1` | Admin/metrics/status-page bind. **Never expose publicly.** |
 | `MIRALL_RELAY_ADMIN_UI` | `true` | The browser status page. `false` leaves only the JSON endpoints. |
 | `MIRALL_RELAY_ADMIN_ALLOWED_HOSTS` | — | Extra `Host` values to accept. Only consulted on a loopback bind — see below. |
-| `MIRALL_RELAY_ALLOWLIST` | — | Private relay: only these keys may connect. Everyone else is refused. |
-| `MIRALL_RELAY_BANLIST` | — | Public relay: these keys are refused, everyone else is allowed. |
-| `MIRALL_RELAY_MAX_SESSIONS_PER_KEY` | `64` | Sessions per peer **device**. See the note below. |
+| `MIRALL_RELAY_ADMIN_WRITE` | `true` | The token-gated `/admin/*` surface. `false` removes it; the CLI still works. |
+| `MIRALL_RELAY_ADMIN_TOKEN_FILE` | `./.keys/admin-token` | Bearer token for `/admin/*`. Minted on first boot and logged **once**. |
+| `MIRALL_RELAY_ACCESS` | `open` | `open` or `invite`. `invite` admits only roster members. |
+| `MIRALL_RELAY_ROSTER_FILE` | `./.keys/members.json` | The member roster. **As secret as the seed** — back it up with it. |
+| `MIRALL_RELAY_ALLOWLIST` | — | Static keys admitted, unioned with the roster. |
+| `MIRALL_RELAY_BANLIST` | — | These keys are refused, whatever the access mode. |
+| `MIRALL_RELAY_MAX_SESSIONS_PER_KEY` | `64` | Sessions per peer **key**. See the note below. |
 | `MIRALL_RELAY_MAX_ACTIVE_LINKS` | `2000` | Global bridged-stream ceiling (~1000 relayed connections). |
 | `MIRALL_RELAY_MAX_LINK_RATE` | `4MiB` | Per link, **per direction**. |
 | `MIRALL_RELAY_MAX_LINK_BYTES` | `512MB` | Per link, **per direction**. |
@@ -154,36 +158,100 @@ CLI flag. Run `mirall-relay --help` for the full list; the essentials:
 
 ### Access control
 
-`ALLOWLIST` and `BANLIST` are both comma- or space-separated lists of z-base-32 or
-hex public keys, validated at startup — a typo refuses to boot rather than
-silently locking everyone out later. Both are enforced during the Noise handshake,
-so a refused peer never reaches a session, a pairing, or a byte of bridged
-traffic. Refusals are counted in `relay_sessions_rejected_total{reason=…}`.
+A relay is in one of two modes, set explicitly with `MIRALL_RELAY_ACCESS`:
 
-Setting `MIRALL_RELAY_ALLOWLIST=` (empty) means *unset*, not "allow nobody".
+| Mode | Who may connect |
+|---|---|
+| `open` (default) | Anyone holding the public key. `BANLIST` and the caps are your only limits. |
+| `invite` | Only people you have minted an invite for, plus any static `ALLOWLIST` keys. |
 
-Two things to know before relying on either:
+The mode is explicit on purpose. Emptiness used to mean "open", which under a
+roster you can edit is a hazard: revoking your last member would silently reopen
+the relay to the internet. In `invite` mode an **empty roster admits nobody**, and
+the status page says so in those words.
 
-- **Both peers of a relayed connection must be allowlisted.** Each end dials the
-  relay independently, so listing only one of them locks the pair out entirely.
-- **The key matched is the peer's DHT node key, not its app identity.** For a
-  Mirall client that key is currently generated fresh on every app start, so you
-  cannot allowlist end users by name — only peers whose DHT identity you pin
-  yourself (your own infrastructure, a fixed enterprise deployment).
+#### Running a private relay
+
+```sh
+mirall-relay invite create ben
+# member   ben
+# key      mrgq43jtgdacci91sdt9fxogdzc7wxtcu71mqi45sgf6e61p3rxy
+# invite   mirall://relay/ygqac38xcbqmffk19weyomkrzhny5qbt5oag7iqzbwscj4b88h…
+```
+
+Send the `invite` line to Ben; he pastes it into Mirall in place of a relay key.
+It is a **bearer credential** — anyone holding it is Ben — so send it the way you
+would send a password, and one per person rather than one per device.
+
+```sh
+mirall-relay invite list             # labels, keys, created, revoked
+mirall-relay invite show ben         # reprint the ticket; he lost the message
+mirall-relay invite revoke ben       # takes effect within ~5s, live sessions too
+```
+
+Inside the container the image is distroless, so run the CLI through the node
+entrypoint directly:
+
+```sh
+docker exec mirall-relay /nodejs/bin/node bin/mirall-relay.js invite create ben
+```
+
+The same operations are available over HTTP at `/admin/*` for platforms with no
+shell — see [Operator endpoints](#operator-endpoints).
+
+**`members.json` is as sensitive as the seed.** It holds every member's seed, so
+it is written `0600` and belongs in the same backup: losing it locks out every
+member, and leaking it hands over every membership.
+
+#### The lists
+
+`ALLOWLIST` and `BANLIST` are comma- or space-separated z-base-32 or hex public
+keys, validated at startup — a typo refuses to boot rather than silently locking
+everyone out later. Both are enforced during the Noise handshake, so a refused
+peer never reaches a session, a pairing, or a byte of bridged traffic. Refusals
+are counted in `relay_sessions_rejected_total{reason=…}` and shown on the status
+page as *refused in the last hour*.
+
+`ALLOWLIST` is the static, config-managed half of the same admission set: the
+effective set is the union of it and the roster. On its own, with `ACCESS` left
+at `open`, it keeps its original meaning and makes the relay private to that
+list. Setting `MIRALL_RELAY_ALLOWLIST=` (empty) means *unset*, not "allow
+nobody" — that is what `ACCESS=invite` is for.
+
+Two things to know before relying on any of it:
+
+- **Both peers of a relayed connection must be admitted.** Each end dials the
+  relay independently, so enrolling only one of them locks the pair out entirely.
+  A private relay only helps its members reach *each other*.
+- **A refused peer cannot tell why.** The rejection happens during the handshake,
+  which is indistinguishable from the relay being offline. That is deliberate —
+  a polite refusal would hand an unauthenticated attacker a handshake per
+  attempt — so the diagnosis is operator-side: the refusal counter on the status
+  page. A small non-zero count there is normal, not an attack: a member's own
+  Mirall can offer this relay's key to their peers, who are then refused having
+  never been given an invite.
 
 For ad-hoc abuse handling on an open relay, prefer `BANLIST`; the meter also bans
 a key automatically after repeated byte/rate cap violations.
 
-### `MAX_SESSIONS_PER_KEY` counts devices, not users
+### `MAX_SESSIONS_PER_KEY` counts members, not devices
 
-Every relayed connection a device makes opens one session with the relay, and the
-key it presents is the device's **DHT node key** — shared across all of that
-device's relayed connections, on both of Mirall's planes. So relaying to N peers
-costs `2 × N` sessions against a single key.
+Every relayed connection opens one session with the relay, and the key presented
+is the peer's **DHT node key**. On an open relay a Mirall client regenerates that
+key on every app start, so it identifies a running app. With an invite it is
+derived from the ticket instead, which makes it stable — and shared across every
+device that person installs Mirall on. Both of Mirall's planes share one DHT
+node, so relaying to N peers costs `2 × N` sessions against that single key.
 
-The default of `64` therefore allows a device to relay to roughly **32 peers**,
-while capping any one key at about 3% of `MAX_ACTIVE_LINKS`. Lower it only if you
-are deliberately rationing a constrained relay.
+The default of `64` therefore allows roughly **32 relayed peers** per member,
+across all of their devices, while capping any one key at about 3% of
+`MAX_ACTIVE_LINKS`. For the case this is built for it is not close: a five-person
+club means four peers each, eight sessions, so there is ~8× headroom before extra
+devices. Lower it only if you are deliberately rationing a constrained relay.
+
+Its second job in `invite` mode is anti-sharing: a ticket forwarded to twenty
+people shows up as one key parked at the ceiling — visible, bounded, and harmless
+to everybody else. The real enforcement is revocation.
 
 ### Caps are per direction
 

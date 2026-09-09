@@ -29,10 +29,13 @@ Also in scope:
 - Anything that lets a client make the relay dial a target of its choosing
   (connection laundering / amplification). The token-pairing model is specifically
   chosen to make this impossible; a way around it is a real vulnerability.
-- Bypassing admission control (`ALLOWLIST` / `BANLIST`) or the byte, rate,
-  duration and concurrency caps.
-- Anything that exposes the seed, a pairing token, or relayed payload bytes —
-  in logs, metrics, the admin HTTP surface, or an error path.
+- Bypassing admission control (`ACCESS` / `ALLOWLIST` / `BANLIST`), invite
+  membership, or the byte, rate, duration and concurrency caps.
+- Bypassing the `/admin/*` bearer token, or reaching any write through the
+  anonymous status surface.
+- Anything that exposes the seed, a member seed or ticket, a member label, the
+  admin token, a pairing token, or relayed payload bytes — in logs, metrics, the
+  admin HTTP surface, or an error path.
 - Remote crash or unbounded resource growth from untrusted input.
 
 ## Known and documented, not vulnerabilities
@@ -48,7 +51,19 @@ make an informed choice:
   globally it is bounded by memory. Allowlist mode closes this entirely. A global
   cap is planned.
 - **The admin HTTP surface exposes internals.** It binds to `127.0.0.1` by
-  default; exposing it publicly is a misconfiguration, not a vulnerability.
+  default; exposing it publicly is a misconfiguration, not a vulnerability. The
+  bearer token protects the `/admin/*` writes, not the port.
+- **An invite ticket is a bearer credential.** Anyone the holder forwards it to
+  becomes that member. There is no cryptographic fix while a person's devices
+  share one member key; the controls are `MAX_SESSIONS_PER_KEY` and revocation.
+- **A private relay is blind to content, not to who talks to whom.** An invite
+  gives the operator a *stable* member identity, and therefore a persistent
+  record of which member paired with which, and when. This is the price of
+  membership and is stated in the client UI as well as here.
+- **A refused peer cannot tell why.** The firewall rejects during the handshake,
+  which is indistinguishable from the relay being offline. A "polite refusal"
+  would hand an unauthenticated attacker a handshake per attempt, so the
+  diagnosis is deliberately operator-side.
 
 ## Supported versions
 

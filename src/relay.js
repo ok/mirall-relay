@@ -53,6 +53,9 @@ export class RelayNode {
     this.startedAt = null
     this.seedSource = { from: 'none', path: null, created: false }
     this._sessions = new Set()
+    // Sessions indexed by remote key, so a revocation or a ban can reach the
+    // connections a peer already holds. The Set above stays the lifecycle owner.
+    this._sessionsByKey = new Map() // keyHex -> Set of { session, socket }
   }
 
   get publicKey () {
@@ -198,6 +201,14 @@ export class RelayNode {
     const session = this.relay.accept(socket, { id: socket.remotePublicKey })
     this._sessions.add(session)
 
+    const held = { session, socket }
+    let peers = this._sessionsByKey.get(keyHex)
+    if (!peers) {
+      peers = new Set()
+      this._sessionsByKey.set(keyHex, peers)
+    }
+    peers.add(held)
+
     // The ONLY hook that ties a minted stream back to the peer that asked for
     // it. createStream() is a Server-level callback with no session context.
     session.on('pair', (isInitiator, token, stream) => {
@@ -209,17 +220,45 @@ export class RelayNode {
       logger?.debug({ err: err.message, key: keyHex }, 'relay session error')
     })
 
-    session.on('close', () => {
+    const forget = () => {
       this._sessions.delete(session)
+      const live = this._sessionsByKey.get(keyHex)
+      if (live) {
+        live.delete(held)
+        if (live.size === 0) this._sessionsByKey.delete(keyHex)
+      }
+    }
+
+    session.on('close', () => {
+      forget()
       closeSession()
     })
 
     // A session that never emits 'close' (abrupt transport loss) still releases
     // its slot when the underlying socket goes.
     socket.once('close', () => {
-      this._sessions.delete(session)
+      forget()
       closeSession()
     })
+  }
+
+  // Drop every live session a key holds. Destroying the SOCKET (not just the
+  // blind-relay session) is what actually tears the bridged links: the session
+  // is a Protomux channel on that socket, and the meter releases the links from
+  // the stream 'close' that follows.
+  //
+  // Without this, "revoke" means "revoke whenever they next reconnect", which is
+  // not what an operator dealing with a stolen laptop means. The meter's
+  // auto-ban had the same gap.
+  destroySessionsFor (keyHex) {
+    const peers = this._sessionsByKey.get(keyHex)
+    if (!peers) return 0
+    const n = peers.size
+    for (const held of [...peers]) {
+      try { held.socket.destroy() } catch { /* already gone */ }
+    }
+    this._sessionsByKey.delete(keyHex)
+    return n
   }
 
   async close () {
