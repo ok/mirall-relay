@@ -256,7 +256,7 @@ test('the Host guard covers /admin/*', async (t) => {
   assert.equal(await requestWithHost(port, '/admin/invites', '127.0.0.1', auth), 201, 'loopback is fine')
 })
 
-test('ADMIN_WRITE=false removes the surface', async (t) => {
+test('ADMIN_WRITE=false removes the JSON surface', async (t) => {
   const testnet = await createTestnet(4)
   const relay = await startTestRelay(testnet, {
     MIRALL_RELAY_ACCESS: 'invite',
@@ -304,6 +304,84 @@ test('a write surface off loopback says so at boot', async (t) => {
     lines.some((line) => line.includes('/admin/* write surface') && line.includes('MIRALL_RELAY_ADMIN_WRITE=false')),
     'an inert rebinding guard over a write surface has to be said out loud'
   )
+})
+
+test('the management page is served without a token, and carries no data', async (t) => {
+  const { base, call } = await withRelay(t)
+
+  // A <link> and a <script src> cannot send an Authorization header, so the
+  // shell and its assets are the only three paths under /admin/ served without
+  // one. They are what ASKS for the token.
+  const before = await (await fetch(base + '/admin/')).text()
+
+  // A label that cannot collide with the page's own example copy.
+  await post(call, '/admin/invites', { label: 'zonk-7' })
+
+  const page = await fetch(base + '/admin/')
+  assert.equal(page.status, 200)
+  assert.match(page.headers.get('content-type'), /text\/html/)
+
+  const html = await page.text()
+  assert.equal(html, before, 'the shell is static — minting a member cannot change it')
+  assert.ok(!html.includes('zonk-7'), 'no member reaches it')
+  assert.ok(!/mirall:\/\/relay\/[a-z0-9]/.test(html), 'and no ticket')
+
+  for (const [path, type] of [['/admin/style.css', /text\/css/], ['/admin/app.js', /javascript/]]) {
+    const res = await fetch(base + path)
+    assert.equal(res.status, 200, path)
+    assert.match(res.headers.get('content-type'), type)
+  }
+})
+
+test('/admin redirects to the trailing slash', async (t) => {
+  const { base } = await withRelay(t)
+  // Without it the page's relative asset URLs resolve against the root and the
+  // stylesheet 404s.
+  const res = await fetch(base + '/admin', { redirect: 'manual' })
+  assert.equal(res.status, 308)
+  assert.equal(res.headers.get('location'), 'admin/')
+})
+
+test('serving the page does not open the data behind it', async (t) => {
+  const { base, call } = await withRelay(t)
+  await post(call, '/admin/invites', { label: 'ben' })
+
+  // The carve-out is exactly three paths. Everything that returns a name or a
+  // secret still needs the bearer.
+  for (const path of ['/admin/invites', '/admin/invites?reveal=1']) {
+    const res = await fetch(base + path)
+    assert.equal(res.status, 401, path)
+  }
+  assert.equal((await fetch(base + '/admin/invites/ben', { method: 'DELETE' })).status, 401)
+  assert.equal((await fetch(base + '/admin/', { method: 'POST' })).status, 405, 'the shell is a read')
+})
+
+test('ADMIN_WRITE=false removes the page too', async (t) => {
+  const testnet = await createTestnet(4)
+  const relay = await startTestRelay(testnet, { MIRALL_RELAY_ADMIN_WRITE: 'false' }, { admin: true })
+  t.after(async () => { await relay.stop(); await testnet.destroy() })
+  const base = `http://127.0.0.1:${relay.admin.server.address().port}`
+
+  for (const path of ['/admin/', '/admin', '/admin/style.css', '/admin/app.js']) {
+    assert.equal((await fetch(base + path, { redirect: 'manual' })).status, 404, path)
+  }
+})
+
+test('the listing carries what the page renders from, in one round trip', async (t) => {
+  const { relay, call } = await withRelay(t)
+  await post(call, '/admin/invites', { label: 'ben' })
+  await post(call, '/admin/invites', { label: 'ada' })
+  await call('/admin/invites/ada', { method: 'DELETE' })
+
+  const body = await (await call('/admin/invites')).json()
+  // Not /status.json: that is the anonymous surface and ADMIN_UI turns it off,
+  // which must not take the only way to mint an invite with it.
+  assert.equal(body.relay.publicKey, relay.relay.publicKeyZ32)
+  assert.equal(body.access.mode, 'invite')
+  assert.deepEqual(body.access.members, { active: 1, total: 2 })
+  assert.equal(typeof body.access.refusedLastHour, 'number')
+  assert.equal(typeof body.access.banned, 'number')
+  assert.equal(body.members.length, 2)
 })
 
 test('the token never appears in /status.json, /metrics or the page', async (t) => {

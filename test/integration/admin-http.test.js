@@ -101,9 +101,13 @@ test('unknown paths 404 and writes to the anonymous surface are refused', async 
   const { base } = await withRelay(t)
   assert.equal((await fetch(base + '/')).status, 200, 'the root is the status page')
   assert.equal((await fetch(base + '/nope')).status, 404)
-  // /admin/* is the ONE place that takes a write, and it answers 401 rather than
-  // 404 so an operator who forgot the token is told which of the two it is.
-  assert.equal((await fetch(base + '/admin')).status, 401)
+  // /admin/* is the ONE place that takes a write. The page shell there is served
+  // without a token — it is what asks for one — but everything that returns a
+  // name or a secret answers 401 rather than 404, so an operator who forgot the
+  // token is told which of the two problems they have.
+  assert.equal((await fetch(base + '/admin', { redirect: 'manual' })).status, 308)
+  assert.equal((await fetch(base + '/admin/')).status, 200, 'the members page')
+  assert.equal((await fetch(base + '/admin/invites')).status, 401, 'the data behind it')
   assert.equal((await fetch(base + '/healthz', { method: 'POST' })).status, 405)
   assert.equal((await fetch(base + '/metrics', { method: 'DELETE' })).status, 405)
 })

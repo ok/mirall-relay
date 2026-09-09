@@ -201,6 +201,19 @@ test('invites can be minted inside the image, which has no shell', { skip }, asy
     'exec', name, '/nodejs/bin/node', 'bin/mirall-relay.js', 'invite', 'revoke', 'smoke'
   ])
   assert.match(revoked.stdout, /revoked smoke/)
+
+  // The members page is the only route an operator on a platform with no shell
+  // has, so it has to be IN the image — the Dockerfile copies directories, and a
+  // missing asset would leave every other test passing while the page 404s.
+  const page = await fetch(`http://127.0.0.1:${ADMIN_PORT}/admin/`)
+  assert.equal(page.status, 200, 'the members page must be in the image')
+  assert.match(await page.text(), /Admin token/)
+  for (const asset of ['style.css', 'app.js']) {
+    const res = await fetch(`http://127.0.0.1:${ADMIN_PORT}/admin/${asset}`)
+    assert.equal(res.status, 200, `admin/${asset} must be in the image`)
+  }
+  // And the data behind it is still shut.
+  assert.equal((await fetch(`http://127.0.0.1:${ADMIN_PORT}/admin/invites`)).status, 401)
 })
 
 // Guard against a silently mis-scoped skip: if docker IS available the suite
