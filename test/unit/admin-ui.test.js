@@ -50,7 +50,7 @@ function status (overrides = {}) {
       maxLinkRateBytesPerSecond: 4 * 1024 * 1024,
       maxLinkDurationMs: 3600000
     },
-    access: { mode: 'open', allowlisted: null, banned: 0 },
+    access: { mode: 'open', allowlisted: null, banned: 0, members: null, refusedLastHour: 0, managed: true },
     privacy: 'This relay bridges end-to-end-encrypted streams.'
   }
   return {
@@ -282,4 +282,30 @@ test('the remediation list does not point at documentation that does not exist',
   assert.match(html, /CGNAT/, 'the case still has to be covered')
   assert.ok(!html.includes('StartTunnel'), 'but not by a pointer to a section nobody wrote')
   assert.ok(!/see the .* in the README/.test(html))
+})
+
+test('the page always answers "how do I add a member", not only when empty', () => {
+  // It used to say this ONLY in the empty-roster warning, so the page told you
+  // how to add the first member and then never mentioned it again — the second
+  // invite had no route on screen at all.
+  const empty = renderPage(status({ access: { mode: 'invite', members: { active: 0, total: 0 }, allowlisted: 0, banned: 0, managed: true } }))
+  assert.match(empty, /href="admin\/"/, 'the empty case points at the admin page')
+  assert.match(empty, /invite create/, 'and at the CLI')
+
+  const populated = renderPage(status({ access: { mode: 'invite', members: { active: 3, total: 3 }, allowlisted: 3, banned: 0, managed: true } }))
+  assert.match(populated, /href="admin\/"/, 'and so does a relay that already has members')
+  assert.match(populated, /invite create/)
+})
+
+test('the page does not offer an admin link that is turned off', () => {
+  const off = renderPage(status({ access: { mode: 'invite', members: { active: 1, total: 1 }, allowlisted: 1, banned: 0, managed: false } }))
+  assert.ok(!off.includes('href="admin/"'), 'MIRALL_RELAY_ADMIN_WRITE=false means there is no page to link to')
+  assert.match(off, /invite create/, 'but the CLI still works and is still named')
+  assert.match(off, /MIRALL_RELAY_ADMIN_WRITE/, 'and the page says why the link is missing')
+})
+
+test('an open relay is not told to manage members it does not gate', () => {
+  const open = renderPage(status())
+  assert.ok(!open.includes('href="admin/"'))
+  assert.ok(!open.includes('invite create'))
 })
