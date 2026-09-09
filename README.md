@@ -196,8 +196,11 @@ entrypoint directly:
 docker exec mirall-relay /nodejs/bin/node bin/mirall-relay.js invite create ben
 ```
 
-The same operations are available over HTTP at `/admin/*` for platforms with no
-shell — see [Operator endpoints](#operator-endpoints).
+On a platform with no shell at all, use the **admin page** at
+`http://localhost:9200/admin/` instead: paste the admin token once, then add and
+revoke members from the browser. The token is in `MIRALL_RELAY_ADMIN_TOKEN_FILE`
+(`/data/admin-token` in the container) and is printed once to the log on the boot
+that creates it.
 
 **`members.json` is as sensitive as the seed.** It holds every member's seed, so
 it is written `0600` and belongs in the same backup: losing it locks out every
@@ -275,6 +278,34 @@ Bound to `127.0.0.1:9200` by default.
 | `/readyz` | Listening, bootstrapped, and **not** firewalled. 503 otherwise. `probed` says whether that verdict was measured. |
 | `/metrics` | Prometheus. See `deploy/prometheus-scrape.example.yml` for the alerts worth having. |
 | `/.well-known/mirall-relay.json` | Public key, region, operator, caps. |
+| `/admin/` | **Members page.** Add, show and revoke invites. Needs the admin token. |
+| `/admin/invites` | The same as JSON. `POST` to mint, `GET` to list, `DELETE /admin/invites/<label>` to revoke. |
+| `/admin/bans` | `POST {key, ttlMs?}` to ban, `DELETE /admin/bans/<key>` to clear. |
+
+Everything above `/admin/` is **anonymous and read-only**. Everything from
+`/admin/` down needs `Authorization: Bearer <token>` and is removed entirely by
+`MIRALL_RELAY_ADMIN_WRITE=false`.
+
+### The members page
+
+`/admin/` is the browser way to do what `mirall-relay invite` does, for operators
+who have no shell. It shows the roster with each member's live session count, a
+field to mint a new invite, and a revoke button.
+
+It is **a separate page from the status page on purpose**. The status page is
+unauthenticated and shows numbers, never names or secrets; this one shows member
+labels and invite tickets, so it sits behind the token.
+
+The page itself is a static shell — every label, key and ticket arrives over an
+authenticated request, and the shell is what asks for the token. That is why the
+page and its two assets are the only paths under `/admin/` served without one: a
+`<link>` cannot send an `Authorization` header, so requiring it there would mean
+no page could ever load to collect the token.
+
+The token is held in `sessionStorage` for that browser tab only — closing the tab
+forgets it, and it is never written to disk by the browser. It is deliberately not
+a cookie: a cookie would ride along on every request to this origin and turn a
+write surface into a CSRF target.
 
 ### The status page
 

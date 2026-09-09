@@ -20,6 +20,15 @@
 // minting an invite is a write THAT EMITS A SECRET, so it takes a bearer token.
 // The rule for the split is that the anonymous page shows numbers, never names
 // or secrets — member labels and tickets exist only behind the token.
+//
+//   GET  /admin/                        the management page (static shell)
+//   GET  /admin/style.css /admin/app.js its assets
+//   *    /admin/invites  /admin/bans    the JSON API, Authorization: Bearer
+//
+// The shell and its assets are the ONLY three paths under /admin/ served without
+// the token, because a <link> and a <script src> cannot send an Authorization
+// header — requiring it there would mean no page could ever load to collect it.
+// They are static markup with empty slots and carry no member data.
 import http from 'node:http'
 import net from 'node:net'
 import b4a from 'b4a'
@@ -28,6 +37,7 @@ import { decodeKeyOrThrow } from './config.js'
 import { mirrorMembers, mirrorRelayStats } from './metrics.js'
 import { capabilityDoc, statusSnapshot } from './status.js'
 import { loadAssets, uiPaths, etagFor, renderPage, standaloneQr } from './admin-ui.js'
+import { managePaths } from './admin-page.js'
 
 export { capabilityDoc }
 
@@ -238,7 +248,25 @@ export function makeAdminServer (cfg, { metrics, relay, firewall, roster, meter,
           sessions: meter.sessionCount(hexOfKey(m.publicKey)),
           ...(reveal && !m.revoked ? { ticket: roster.ticketFor(m.label, relay.publicKey) } : {})
         }))
-        return json(res, 200, { members, active: roster.active, total: roster.total })
+        return json(res, 200, {
+          // The page renders from one round trip, and it must not depend on
+          // /status.json: that is the anonymous surface and MIRALL_RELAY_ADMIN_UI
+          // turns it off, which must not take the only way to mint an invite
+          // with it. Naming the relay key also answers "which of my two relays
+          // am I minting for", which is the same mistake expectRelayPublicKey
+          // exists to catch.
+          relay: { publicKey: relay.publicKeyZ32 },
+          access: {
+            mode: cfg.access === 'invite' ? 'invite' : (cfg.allowlist ? 'allowlist' : 'open'),
+            members: { active: roster.active, total: roster.total },
+            allowlisted: firewall.allowlisted,
+            banned: firewall.bannedCount,
+            refusedLastHour: firewall.refusedLastHour
+          },
+          members,
+          active: roster.active,
+          total: roster.total
+        })
       }
 
       if (resource === 'invites' && req.method === 'DELETE' && id) {
@@ -304,6 +332,23 @@ export function makeAdminServer (cfg, { metrics, relay, firewall, roster, meter,
     // takes POST and DELETE.
     if (isAdmin) {
       if (!cfg.adminWrite || !auth) return notFound(res)
+
+      // A bare /admin would resolve the page's relative asset URLs against the
+      // root — style.css would be fetched as /style.css — so the page only ever
+      // lives at the trailing-slash form, and this sends the browser there.
+      if (path === '/admin') {
+        res.writeHead(308, { ...BASE_HEADERS, location: 'admin/', 'content-length': 0 })
+        return res.end()
+      }
+
+      const page = managePaths().get(path)
+      if (page) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          return json(res, 405, { error: 'method not allowed' })
+        }
+        return cached(req, res, page.body, page.type, page.etag)
+      }
+
       if (!auth.check(req.headers.authorization)) {
         res.setHeader('www-authenticate', 'Bearer realm="mirall-relay"')
         return json(res, 401, { error: 'unauthorized' })
