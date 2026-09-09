@@ -116,6 +116,7 @@ main { display: flex; flex-direction: column; gap: 1rem; }
 }
 .note.warn { color: var(--warn); background: var(--warn-bg); }
 .note.bad { color: var(--bad); background: var(--bad-bg); }
+.note.good { color: var(--good); background: var(--good-bg); }
 
 /* --- forms -------------------------------------------------------------- */
 

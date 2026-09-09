@@ -39,14 +39,14 @@ test('POST /admin/invites without a token is 401', async (t) => {
   assert.equal(res.status, 401)
   assert.match(res.headers.get('www-authenticate'), /^Bearer /)
   assert.equal((await call('/admin/invites')).status, 200)
-  assert.equal((await (await call('/admin/invites')).json()).total, 0, 'nothing was created')
+  assert.equal((await (await call('/admin/invites')).json()).access.members.total, 0, 'nothing was created')
 })
 
 test('a wrong token is 401 and creates nothing', async (t) => {
   const { call } = await withRelay(t)
   const res = await post(call, '/admin/invites', { label: 'ben' }, { token: 'z'.repeat(52) })
   assert.equal(res.status, 401)
-  assert.equal((await (await call('/admin/invites')).json()).total, 0)
+  assert.equal((await (await call('/admin/invites')).json()).access.members.total, 0)
 })
 
 test('a valid token mints a ticket', async (t) => {
@@ -97,8 +97,7 @@ test('GET /admin/invites never returns a seed', async (t) => {
   assert.ok(!/[0-9a-f]{64}/i.test(text), 'not even an unlabelled 64-hex run')
 
   const body = JSON.parse(text)
-  assert.equal(body.active, 2)
-  assert.equal(body.total, 2)
+  assert.deepEqual(body.access.members, { active: 2, total: 2 })
   assert.equal(body.members[0].sessions, 0, 'the live session count comes from the meter')
   assert.equal(body.members[0].ticket, undefined, 'a ticket is a secret, not a listing field')
 })
@@ -306,6 +305,41 @@ test('a write surface off loopback says so at boot', async (t) => {
   )
 })
 
+test('one member\'s ticket is revealed without fetching everybody\'s', async (t) => {
+  const { relay, call } = await withRelay(t)
+  await post(call, '/admin/invites', { label: 'ben' })
+  await post(call, '/admin/invites', { label: 'ada' })
+
+  // The page uses this route. The bulk ?reveal=1 attaches a live bearer
+  // credential for EVERY active member, so using it to show one person's invite
+  // would pull the whole roster's secrets to the caller to discard all but one.
+  const one = await (await call('/admin/invites/ben?reveal=1')).json()
+  assert.equal(one.label, 'ben')
+  assert.equal(one.sessions, 0)
+  assert.ok(b4a.equals(
+    decodeTicket(one.ticket, { expectRelayPublicKey: relay.relay.publicKey }).relayPublicKey,
+    relay.relay.publicKey
+  ))
+  assert.ok(!JSON.stringify(one).includes('ada'), 'and nobody else is in the response')
+
+  const without = await (await call('/admin/invites/ben')).json()
+  assert.equal(without.ticket, undefined, 'the ticket is opt-in even for one member')
+  assert.equal(without.publicKey, one.publicKey)
+  assert.ok(!/[0-9a-f]{64}/i.test(JSON.stringify(without)), 'and never a seed')
+
+  assert.equal((await call('/admin/invites/nobody')).status, 404)
+})
+
+test('a revoked member has no ticket to reveal', async (t) => {
+  const { call } = await withRelay(t)
+  await post(call, '/admin/invites', { label: 'ben' })
+  await call('/admin/invites/ben', { method: 'DELETE' })
+
+  const gone = await (await call('/admin/invites/ben?reveal=1')).json()
+  assert.equal(gone.ticket, undefined)
+  assert.ok(gone.revoked)
+})
+
 test('the management page is served without a token, and carries no data', async (t) => {
   const { base, call } = await withRelay(t)
 
@@ -326,7 +360,7 @@ test('the management page is served without a token, and carries no data', async
   assert.ok(!html.includes('zonk-7'), 'no member reaches it')
   assert.ok(!/mirall:\/\/relay\/[a-z0-9]/.test(html), 'and no ticket')
 
-  for (const [path, type] of [['/admin/style.css', /text\/css/], ['/admin/app.js', /javascript/]]) {
+  for (const [path, type] of [['/admin/style.css', /text\/css/], ['/admin/app.js', /javascript/], ['/admin/copy-button.js', /javascript/]]) {
     const res = await fetch(base + path)
     assert.equal(res.status, 200, path)
     assert.match(res.headers.get('content-type'), type)
@@ -353,6 +387,7 @@ test('serving the page does not open the data behind it', async (t) => {
     assert.equal(res.status, 401, path)
   }
   assert.equal((await fetch(base + '/admin/invites/ben', { method: 'DELETE' })).status, 401)
+  assert.equal((await fetch(base + '/admin/invites/ben?reveal=1')).status, 401)
   assert.equal((await fetch(base + '/admin/', { method: 'POST' })).status, 405, 'the shell is a read')
 })
 
@@ -362,7 +397,7 @@ test('ADMIN_WRITE=false removes the page too', async (t) => {
   t.after(async () => { await relay.stop(); await testnet.destroy() })
   const base = `http://127.0.0.1:${relay.admin.server.address().port}`
 
-  for (const path of ['/admin/', '/admin', '/admin/style.css', '/admin/app.js']) {
+  for (const path of ['/admin/', '/admin', '/admin/style.css', '/admin/app.js', '/admin/copy-button.js']) {
     assert.equal((await fetch(base + path, { redirect: 'manual' })).status, 404, path)
   }
 })
@@ -380,8 +415,10 @@ test('the listing carries what the page renders from, in one round trip', async 
   assert.equal(body.access.mode, 'invite')
   assert.deepEqual(body.access.members, { active: 1, total: 2 })
   assert.equal(typeof body.access.refusedLastHour, 'number')
-  assert.equal(typeof body.access.banned, 'number')
   assert.equal(body.members.length, 2)
+  // One copy of each count. Two in one payload is the shape that disagrees.
+  assert.equal(body.active, undefined)
+  assert.equal(body.total, undefined)
 })
 
 test('the token never appears in /status.json, /metrics or the page', async (t) => {

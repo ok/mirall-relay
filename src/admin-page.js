@@ -14,14 +14,17 @@
 // ASKS for the token in the first place. That is why these three files are served
 // without one — a <link> and a <script src> cannot send an Authorization header,
 // so requiring it here would mean no page could ever load to collect it.
-import fs from 'node:fs'
-import { etagFor } from './admin-ui.js'
+import { etagFor, readAssets } from './admin-ui.js'
 
 // Independent of ui.css on purpose: MIRALL_RELAY_ADMIN_UI=false turns the
 // anonymous page off, and it must not take the only way to mint an invite with it.
 const ASSETS = {
   '/admin/style.css': ['admin-page.css', 'text/css; charset=utf-8'],
-  '/admin/app.js': ['admin-page.client.js', 'text/javascript; charset=utf-8']
+  '/admin/app.js': ['admin-page.client.js', 'text/javascript; charset=utf-8'],
+  // The same file the status page serves at /copy-button.js. Served here too
+  // rather than shared by URL, because /copy-button.js is a ui path and
+  // MIRALL_RELAY_ADMIN_UI=false takes it away.
+  '/admin/copy-button.js': ['copy-button.js', 'text/javascript; charset=utf-8']
 }
 
 export const PAGE_PATH = '/admin/'
@@ -32,15 +35,9 @@ let cache = null
 // that ships only src/*.js must degrade to a 404 on one route, not stop the relay.
 export function managePaths () {
   if (cache) return cache
-  cache = new Map()
+  cache = readAssets(ASSETS)
   const html = renderManagePage()
   cache.set(PAGE_PATH, { body: Buffer.from(html), type: 'text/html; charset=utf-8', etag: etagFor(html) })
-  for (const [route, [file, type]] of Object.entries(ASSETS)) {
-    try {
-      const body = fs.readFileSync(new URL(`./${file}`, import.meta.url))
-      cache.set(route, { body, type, etag: etagFor(body) })
-    } catch { /* missing asset: that route 404s, the rest of the surface still works */ }
-  }
   return cache
 }
 
@@ -68,6 +65,10 @@ export function renderManagePage () {
 </header>
 
 <main>
+  <!-- Above the cards, not below them: an error from the mint form used to render
+       under a thirty-member roster, hundreds of pixels off-screen. -->
+  <p class="note bad" id="message" hidden></p>
+
   <section class="card" id="unlock">
     <h2>Admin token</h2>
     <p class="verdict">Managing members needs the relay's admin token.</p>
@@ -111,7 +112,6 @@ export function renderManagePage () {
     <p class="hint" id="roster-summary"></p>
   </section>
 
-  <p class="note bad" id="error" hidden></p>
 </main>
 
 <footer>

@@ -190,7 +190,7 @@ test('the standalone QR is a file you can save', () => {
 
 test('every asset loads and carries a stable ETag', () => {
   const assets = loadAssets()
-  for (const path of ['/ui.css', '/ui.js', '/format.js']) {
+  for (const path of ['/ui.css', '/ui.js', '/format.js', '/copy-button.js']) {
     const asset = assets.get(path)
     assert.ok(asset, `${path} must be served`)
     assert.ok(asset.body.length > 0)

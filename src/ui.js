@@ -6,6 +6,7 @@
 // The three decisions worth getting right are exported as pure functions so the
 // repo's own test runner can reach them; only start() touches the DOM.
 import { formatField } from './format.js'
+import { attachCopy } from './copy-button.js'
 
 const LIVE_MS = 5000
 const BACKOFF_MS = 30000
@@ -72,16 +73,6 @@ export function applyFields (root, status) {
   }
 }
 
-function selectKey () {
-  const node = document.getElementById('public-key')
-  if (!node) return
-  const range = document.createRange()
-  range.selectNodeContents(node)
-  const selection = window.getSelection()
-  selection.removeAllRanges()
-  selection.addRange(range)
-}
-
 function start () {
   let failures = 0
   let timer = null
@@ -123,22 +114,7 @@ function start () {
 
   const copyButton = document.getElementById('copy-key')
   if (copyButton) {
-    let resetTimer = null
-    copyButton.addEventListener('click', async () => {
-      clearTimeout(resetTimer)
-      let copied = false
-      try {
-        // The Clipboard API is absent on plain HTTP to a non-localhost host,
-        // which is exactly how a platform proxy serves this page. Selecting the
-        // key is the normal path there, not an exotic fallback.
-        await navigator.clipboard.writeText(copyButton.dataset.key)
-        copied = true
-      } catch {
-        selectKey()
-      }
-      copyButton.textContent = copied ? 'Copied' : 'Selected — press ⌘C / Ctrl+C'
-      resetTimer = setTimeout(() => { copyButton.textContent = 'Copy key' }, 2500)
-    })
+    attachCopy(copyButton, () => document.getElementById('public-key'), { idle: 'Copy key' })
   }
 
   schedule()

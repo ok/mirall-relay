@@ -44,6 +44,29 @@ export function reachabilityState (relay) {
   return 'unknown'
 }
 
+// The access block, in one place. Both surfaces that report it — the anonymous
+// snapshot below and GET /admin/invites — call this, for the reason stated at the
+// top of the file: a second copy eventually disagrees with the first, and the two
+// pages would then differ about what mode the relay is even in.
+export function accessBlock (cfg, firewall, roster) {
+  return {
+    // Three states, and the difference matters to an operator staring at the
+    // page wondering why nobody connects: 'invite' with 0 members admits
+    // nobody, and says so.
+    mode: cfg.access === 'invite' ? 'invite' : (cfg.allowlist ? 'allowlist' : 'open'),
+    allowlisted: firewall ? firewall.allowlisted : null,
+    banned: firewall ? firewall.bannedCount : 0,
+    // Counts only. Never labels: the snapshot is served to anyone who can reach
+    // the admin port, and a member label is a person's name.
+    members: roster ? { active: roster.active, total: roster.total } : null,
+    refusedLastHour: firewall ? firewall.refusedLastHour : 0,
+    // Whether /admin/ is served, so the page can offer the operator a way to
+    // manage members instead of only telling them the count. A boolean about
+    // configuration, not a name or a secret — the rule for this surface holds.
+    managed: cfg.adminWrite !== false
+  }
+}
+
 export async function statusSnapshot ({ cfg, relay, metrics, firewall, roster, version }) {
   const counters = await snapshotCounters(metrics)
   const net = relay.networkInfo()
@@ -98,22 +121,7 @@ export async function statusSnapshot ({ cfg, relay, metrics, firewall, roster, v
       sessions: bl ? { accepted: bl.sessions.accepted, active: bl.sessions.active } : null
     },
     caps: caps(cfg),
-    access: {
-      // Three states, and the difference matters to an operator staring at the
-      // page wondering why nobody connects: 'invite' with 0 members admits
-      // nobody, and says so.
-      mode: cfg.access === 'invite' ? 'invite' : (cfg.allowlist ? 'allowlist' : 'open'),
-      allowlisted: firewall ? firewall.allowlisted : null,
-      banned: firewall ? firewall.bannedCount : 0,
-      // Counts only. Never labels: this document is served to anyone who can
-      // reach the admin port, and a member label is a person's name.
-      members: roster ? { active: roster.active, total: roster.total } : null,
-      refusedLastHour: firewall ? firewall.refusedLastHour : 0,
-      // Whether /admin/ is served, so the page can offer the operator a way to
-      // manage members instead of only telling them the count. A boolean about
-      // configuration, not a name or a secret — the rule for this surface holds.
-      managed: cfg.adminWrite !== false
-    },
+    access: accessBlock(cfg, firewall, roster),
     privacy: PRIVACY
   }
 }
