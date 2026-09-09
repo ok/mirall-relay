@@ -187,7 +187,25 @@ function accessSentence (access) {
 function accessWarning (access) {
   if (access.mode !== 'invite') return ''
   if (access.members && access.members.active > 0) return ''
-  return '<p class="note warn">Mint the first invite with <code>mirall-relay invite create &lt;label&gt;</code>, then send the invite line to that person. Until then every connection is refused.</p>'
+  // The verdict sentence directly above already says nobody can connect; this
+  // note's whole job is the way out of it.
+  return `<p class="note warn">${manageSentence(access)}</p>`
+}
+
+// Shown whether or not the roster is empty. It used to appear ONLY in the loud
+// case above, which meant the page told you how to add the first member and then
+// never mentioned it again — the second invite had no route on screen at all.
+function manageHint (access) {
+  if (access.mode !== 'invite') return ''
+  if (!access.members || access.members.active === 0) return '' // already said, loudly
+  return `<p class="hint">${manageSentence(access)}</p>`
+}
+
+function manageSentence (access) {
+  const cli = 'Or run <code>mirall-relay invite create &lt;label&gt;</code>.'
+  return access.managed === false
+    ? 'Add a member with <code>mirall-relay invite create &lt;label&gt;</code>, then send them the invite line. The admin page is off (<code>MIRALL_RELAY_ADMIN_WRITE=false</code>).'
+    : `Add and revoke members on the <a href="admin/">admin page</a>. ${cli}`
 }
 
 function accessRows (access) {
@@ -348,6 +366,7 @@ export function renderPage (status) {
     <h2>Who may connect</h2>
     <p class="verdict">${escapeHtml(accessSentence(access))}</p>
     ${accessWarning(access)}
+    ${manageHint(access)}
     <dl class="facts">
       ${rows(accessRows(access))}
     </dl>

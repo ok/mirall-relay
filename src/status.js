@@ -108,7 +108,11 @@ export async function statusSnapshot ({ cfg, relay, metrics, firewall, roster, v
       // Counts only. Never labels: this document is served to anyone who can
       // reach the admin port, and a member label is a person's name.
       members: roster ? { active: roster.active, total: roster.total } : null,
-      refusedLastHour: firewall ? firewall.refusedLastHour : 0
+      refusedLastHour: firewall ? firewall.refusedLastHour : 0,
+      // Whether /admin/ is served, so the page can offer the operator a way to
+      // manage members instead of only telling them the count. A boolean about
+      // configuration, not a name or a secret — the rule for this surface holds.
+      managed: cfg.adminWrite !== false
     },
     privacy: PRIVACY
   }
