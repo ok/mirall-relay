@@ -35,7 +35,7 @@ import b4a from 'b4a'
 import idEnc from 'hypercore-id-encoding'
 import { decodeKeyOrThrow } from './config.js'
 import { mirrorMembers, mirrorRelayStats } from './metrics.js'
-import { capabilityDoc, statusSnapshot } from './status.js'
+import { accessBlock, capabilityDoc, statusSnapshot } from './status.js'
 import { loadAssets, uiPaths, etagFor, renderPage, standaloneQr } from './admin-ui.js'
 import { managePaths } from './admin-page.js'
 
@@ -255,17 +255,28 @@ export function makeAdminServer (cfg, { metrics, relay, firewall, roster, meter,
           // with it. Naming the relay key also answers "which of my two relays
           // am I minting for", which is the same mistake expectRelayPublicKey
           // exists to catch.
+          //
+          // access.members carries the counts; they are deliberately NOT repeated
+          // at the top level, because two copies of one number in one payload is
+          // the shape that eventually disagrees.
           relay: { publicKey: relay.publicKeyZ32 },
-          access: {
-            mode: cfg.access === 'invite' ? 'invite' : (cfg.allowlist ? 'allowlist' : 'open'),
-            members: { active: roster.active, total: roster.total },
-            allowlisted: firewall.allowlisted,
-            banned: firewall.bannedCount,
-            refusedLastHour: firewall.refusedLastHour
-          },
-          members,
-          active: roster.active,
-          total: roster.total
+          access: accessBlock(cfg, firewall, roster),
+          members
+        })
+      }
+
+      if (resource === 'invites' && req.method === 'GET' && id) {
+        // One member. The bulk ?reveal=1 attaches a live bearer credential for
+        // EVERY active member, so using it to show one person's invite pulls the
+        // whole roster's secrets into the caller's memory to discard all but one.
+        const member = roster.get(id)
+        return json(res, 200, {
+          label: member.label,
+          publicKey: member.publicKey,
+          created: member.created,
+          revoked: member.revoked,
+          sessions: meter.sessionCount(hexOfKey(member.publicKey)),
+          ...(reveal && !member.revoked ? { ticket: roster.ticketFor(member.label, relay.publicKey) } : {})
         })
       }
 

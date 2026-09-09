@@ -9,6 +9,8 @@
 // text — labels are people's names — and this page has no innerHTML anywhere, so
 // there is no escaping to get wrong. The CSP (default-src 'none') is the second
 // line, not the first.
+import { attachCopy } from './copy-button.js'
+
 const TOKEN_KEY = 'mirall-relay.admin-token'
 
 const el = (id) => document.getElementById(id)
@@ -35,11 +37,19 @@ function show (id, visible) {
   el(id).hidden = !visible
 }
 
-function fail (message) {
-  const node = el('error')
-  node.textContent = message
+// One message element, above the cards. It used to sit at the BOTTOM of <main>,
+// so on a relay with thirty members a duplicate-label error rendered hundreds of
+// pixels below the fold and the click looked ignored.
+function say (message, tone) {
+  const node = el('message')
+  node.textContent = message || ''
+  node.className = 'note ' + (tone || 'bad')
   node.hidden = !message
+  if (message) node.scrollIntoView({ block: 'nearest' })
 }
+
+const fail = (message) => say(message, 'bad')
+const ok = (message) => say(message, 'good')
 
 // Paths are document-relative, so the page works under a proxy prefix the same
 // way the status page does — /relay/admin/ reaches /relay/admin/invites.
@@ -55,7 +65,9 @@ async function api (path, options = {}) {
 
   if (res.status === 401) {
     lock('That token was not accepted.')
-    throw new Error('unauthorized')
+    // Marked, so the callers below do not overwrite the sentence above with the
+    // word "unauthorized".
+    throw Object.assign(new Error('unauthorized'), { handled: true })
   }
 
   const body = await res.json().catch(() => ({}))
@@ -70,9 +82,16 @@ function lock (message) {
   show('manage', false)
   show('roster', false)
   show('minted', false)
+  // CLEARED, not merely hidden. Hiding left the invite ticket and every member's
+  // name sitting in the DOM after "forget token" — readable from devtools, a
+  // find-in-page or any later script. The affordance says forget, so it forgets.
+  el('minted-ticket').textContent = ''
+  el('minted-label').textContent = ''
+  el('member-list').textContent = ''
+  el('roster-summary').textContent = ''
   el('relay-key').textContent = 'not unlocked'
   setPill('Locked', 'idle')
-  fail(message || '')
+  say(message || '', 'bad')
 }
 
 function setPill (text, tone) {
@@ -104,7 +123,8 @@ function renderSummary (data) {
     warning.hidden = false
     warning.textContent =
       'This relay is in ' + (access.mode || 'open') + ' mode, so invites are recorded but do not gate anything yet. ' +
-      'Set MIRALL_RELAY_ACCESS=invite and restart to admit only these members.'
+      'Set MIRALL_RELAY_ACCESS=invite and restart to gate on the roster. ' +
+      'Any MIRALL_RELAY_ALLOWLIST keys stay admitted alongside it — the admitted set is the union of the two.'
   }
 
   const refused = access.refusedLastHour || 0
@@ -176,7 +196,7 @@ async function load () {
   show('unlock', false)
   show('manage', true)
   show('roster', true)
-  fail('')
+  say('', 'bad')
 }
 
 function showTicket (label, ticket) {
@@ -188,12 +208,14 @@ function showTicket (label, ticket) {
 
 async function revealTicket (label) {
   try {
-    const data = await api('invites?reveal=1')
-    const member = data.members.find((m) => m.label === label)
-    if (member && member.ticket) showTicket(label, member.ticket)
+    // One member's route, not the bulk ?reveal=1: that attaches a live bearer
+    // credential for every active member, so showing one person's invite would
+    // pull the whole roster's secrets into this tab to discard all but one.
+    const member = await api('invites/' + encodeURIComponent(label) + '?reveal=1')
+    if (member.ticket) showTicket(member.label, member.ticket)
     else fail('No invite to show for ' + label + '.')
   } catch (err) {
-    fail(err.message)
+    if (!err.handled) fail(err.message)
   }
 }
 
@@ -202,11 +224,14 @@ async function revokeMember (label) {
   if (!window.confirm('Revoke ' + label + '?\n\nTheir invite stops working immediately and any connection they have open is closed.')) return
   try {
     const result = await api('invites/' + encodeURIComponent(label), { method: 'DELETE' })
+    el('minted-ticket').textContent = ''
     show('minted', false)
     await load()
-    if (result.sessionsClosed) fail('Revoked ' + label + ' and closed ' + result.sessionsClosed + ' live session(s).')
+    ok(result.sessionsClosed
+      ? 'Revoked ' + label + ' and closed ' + result.sessionsClosed + ' live connection(s).'
+      : 'Revoked ' + label + '.')
   } catch (err) {
-    fail(err.message)
+    if (!err.handled) fail(err.message)
   }
 }
 
@@ -219,7 +244,16 @@ function start () {
     try {
       await load()
       writeToken(token)
-    } catch { /* api() has already locked and reported */ }
+    } catch (err) {
+      // Only a 401 explains itself. A 503 while the relay has no identity yet, a
+      // 403 from the Host guard, or a dropped connection used to land here and be
+      // discarded — the field cleared, nothing appeared, and the operator had no
+      // idea whether the token was wrong or the relay was.
+      if (!err.handled) {
+        token = ''
+        fail(err.message)
+      }
+    }
   })
 
   el('mint-form').addEventListener('submit', async (event) => {
@@ -233,37 +267,22 @@ function start () {
     try {
       const member = await api('invites', { method: 'POST', body: JSON.stringify({ label }) })
       input.value = ''
-      showTicket(member.label, member.ticket)
       await load()
+      showTicket(member.label, member.ticket)
     } catch (err) {
-      fail(err.message)
+      if (!err.handled) fail(err.message)
     } finally {
       button.disabled = false
     }
   })
 
-  el('copy-ticket').addEventListener('click', async (event) => {
-    const button = event.currentTarget
-    const ticket = el('minted-ticket').textContent
-    let copied = false
-    try {
-      // The Clipboard API is absent on plain HTTP to a non-localhost host, which
-      // is exactly how a platform proxy serves this page. Selecting is the normal
-      // path there, not an exotic fallback.
-      await navigator.clipboard.writeText(ticket)
-      copied = true
-    } catch {
-      const range = document.createRange()
-      range.selectNodeContents(el('minted-ticket'))
-      const selection = window.getSelection()
-      selection.removeAllRanges()
-      selection.addRange(range)
-    }
-    button.textContent = copied ? 'Copied' : 'Selected — press ⌘C / Ctrl+C'
-    setTimeout(() => { button.textContent = 'Copy invite' }, 2500)
-  })
+  attachCopy(el('copy-ticket'), () => el('minted-ticket'), { idle: 'Copy invite' })
 
-  el('dismiss-ticket').addEventListener('click', () => show('minted', false))
+  el('dismiss-ticket').addEventListener('click', () => {
+    // The panel is dismissed because the operator is done with the secret in it.
+    el('minted-ticket').textContent = ''
+    show('minted', false)
+  })
 
   el('lock').addEventListener('click', (event) => {
     event.preventDefault()

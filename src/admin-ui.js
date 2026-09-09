@@ -24,7 +24,8 @@ import { accessSignature, reachabilitySignature } from './ui.js'
 const ASSET_TYPES = {
   'ui.css': 'text/css; charset=utf-8',
   'ui.js': 'text/javascript; charset=utf-8',
-  'format.js': 'text/javascript; charset=utf-8'
+  'format.js': 'text/javascript; charset=utf-8',
+  'copy-button.js': 'text/javascript; charset=utf-8'
 }
 
 // Every path the browser surface owns — the set the Host guard covers, and the
@@ -35,19 +36,30 @@ export function etagFor (body) {
   return `"${crypto.createHash('sha256').update(body).digest('base64url').slice(0, 27)}"`
 }
 
+// Read a route -> file map off disk. Shared with src/admin-page.js, which serves
+// the members page's assets the same way and would otherwise repeat every part of
+// this: the lazy cache, the loop, and the swallowed catch.
+export function readAssets (routes) {
+  const out = new Map()
+  for (const [route, [file, type]] of Object.entries(routes)) {
+    try {
+      const body = fs.readFileSync(new URL(`./${file}`, import.meta.url))
+      out.set(route, { body, type, etag: etagFor(body) })
+    } catch { /* missing asset: that route 404s, the relay still runs */ }
+  }
+  return out
+}
+
 // Read on first use, not at import. Reading at module load made src/ui/*.css a
 // hard boot dependency of the whole CLI: any packaging that shipped only src/*.js
 // turned "the status page 404s" into "the relay will not start and you cannot run
 // the key ceremony", with an error naming a stylesheet.
 let assetCache = null
 export function loadAssets () {
-  if (assetCache) return assetCache
-  assetCache = new Map()
-  for (const [file, type] of Object.entries(ASSET_TYPES)) {
-    try {
-      const body = fs.readFileSync(new URL(`./${file}`, import.meta.url))
-      assetCache.set('/' + file, { body, type, etag: etagFor(body) })
-    } catch { /* missing asset: that route 404s, the relay still runs */ }
+  if (!assetCache) {
+    assetCache = readAssets(
+      Object.fromEntries(Object.entries(ASSET_TYPES).map(([file, type]) => ['/' + file, [file, type]]))
+    )
   }
   return assetCache
 }

@@ -33,7 +33,7 @@ test('its asset URLs are document-relative, so a proxy prefix works', () => {
 
 test('every route the page needs is served', () => {
   const assets = managePaths()
-  for (const path of [PAGE_PATH, '/admin/style.css', '/admin/app.js']) {
+  for (const path of [PAGE_PATH, '/admin/style.css', '/admin/app.js', '/admin/copy-button.js']) {
     const asset = assets.get(path)
     assert.ok(asset, `${path} must be served`)
     assert.ok(asset.body.length > 0)
@@ -61,4 +61,33 @@ test('the token is kept for the tab only, never on disk', async () => {
   // A cookie would ride along on every request to this origin and turn a write
   // surface into a CSRF target; the header is sent explicitly instead.
   assert.ok(!/document\.cookie/.test(source))
+})
+
+test('locking clears what it was protecting, it does not merely hide it', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  const lock = source.slice(source.indexOf('function lock ('), source.indexOf('function setPill ('))
+  // Hiding left the invite ticket and every member's name in the DOM after
+  // "forget token" — readable from devtools, find-in-page or any later script.
+  for (const id of ['minted-ticket', 'member-list', 'minted-label']) {
+    assert.match(lock, new RegExp(`el\\('${id}'\\)\\.textContent = ''`), id)
+  }
+})
+
+test('the page reveals one member at a time', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  // The bulk ?reveal=1 hands back a live bearer credential for every active
+  // member; the page must not reach for it to show one person their invite.
+  assert.ok(!/api\('invites\?reveal=1'\)/.test(source))
+  assert.match(source, /invites\/' \+ encodeURIComponent\(label\) \+ '\?reveal=1/)
+})
+
+test('the copy button is the shared one, not a second copy', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  // It was written twice and the copy immediately drifted, losing the
+  // clearTimeout guard that stops a second click's feedback being wiped.
+  assert.match(source, /import \{ attachCopy \} from '\.\/copy-button\.js'/)
+  assert.ok(!/navigator\.clipboard/.test(source), 'the clipboard call belongs to the shared module')
 })

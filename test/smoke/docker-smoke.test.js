@@ -96,7 +96,7 @@ test('the image starts, serves /healthz and derives the expected identity', { sk
   const page = await (await fetch(`http://127.0.0.1:${ADMIN_PORT}/`)).text()
   assert.ok(page.includes(expected), 'the key the image derived must be on the page')
   assert.match(page, /Settings → Network/)
-  for (const asset of ['ui.css', 'ui.js', 'format.js']) {
+  for (const asset of ['ui.css', 'ui.js', 'format.js', 'copy-button.js']) {
     const res = await fetch(`http://127.0.0.1:${ADMIN_PORT}/${asset}`)
     assert.equal(res.status, 200, `${asset} must be in the image`)
   }
@@ -208,7 +208,7 @@ test('invites can be minted inside the image, which has no shell', { skip }, asy
   const page = await fetch(`http://127.0.0.1:${ADMIN_PORT}/admin/`)
   assert.equal(page.status, 200, 'the members page must be in the image')
   assert.match(await page.text(), /Admin token/)
-  for (const asset of ['style.css', 'app.js']) {
+  for (const asset of ['style.css', 'app.js', 'copy-button.js']) {
     const res = await fetch(`http://127.0.0.1:${ADMIN_PORT}/admin/${asset}`)
     assert.equal(res.status, 200, `admin/${asset} must be in the image`)
   }
