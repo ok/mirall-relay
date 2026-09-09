@@ -143,3 +143,42 @@ test('extra admin hosts parse as a list and default to none', () => {
     ['relay.internal', 'umbrel.local']
   )
 })
+
+test('access accepts open and invite only', () => {
+  assert.equal(loadConfig([], { MIRALL_RELAY_ACCESS: 'invite' }).access, 'invite')
+  assert.equal(loadConfig([], { MIRALL_RELAY_ACCESS: '  INVITE  ' }).access, 'invite')
+  assert.equal(loadConfig(['--access=invite'], {}).access, 'invite')
+  assert.throws(
+    () => loadConfig([], { MIRALL_RELAY_ACCESS: 'private' }),
+    /MIRALL_RELAY_ACCESS \/ --access: expected open or invite/
+  )
+  assert.throws(() => validate({ ...DEFAULTS, access: 'allowlist' }), /access must be open or invite/)
+})
+
+test('access defaults to open', () => {
+  // The whole point of making it explicit: nothing an existing operator has
+  // configured changes behaviour.
+  assert.equal(DEFAULTS.access, 'open')
+  assert.equal(loadConfig([], {}).access, 'open')
+})
+
+test('a roster file does not imply invite mode', () => {
+  // Emptiness is no longer how privacy is expressed, and neither is presence.
+  const cfg = loadConfig([], { MIRALL_RELAY_ROSTER_FILE: '/tmp/members.json' })
+  assert.equal(cfg.access, 'open')
+  assert.equal(cfg.rosterFile, '/tmp/members.json')
+})
+
+test('the admin write surface is on by default with a file-backed token', () => {
+  const cfg = loadConfig([], {})
+  assert.equal(cfg.adminWrite, true)
+  assert.equal(cfg.adminToken, null, 'the env token is an override, never a default')
+  assert.equal(cfg.adminTokenFile, './.keys/admin-token')
+  assert.equal(loadConfig([], { MIRALL_RELAY_ADMIN_WRITE: 'false' }).adminWrite, false)
+  assert.equal(loadConfig(['--admin-write=false'], {}).adminWrite, false)
+})
+
+test('the new options are frozen with the rest', () => {
+  const cfg = loadConfig([], { MIRALL_RELAY_ACCESS: 'invite' })
+  assert.ok(Object.isFrozen(cfg), 'the roster and the ban set are the mutable state, not cfg')
+})

@@ -44,7 +44,7 @@ export function reachabilityState (relay) {
   return 'unknown'
 }
 
-export async function statusSnapshot ({ cfg, relay, metrics, firewall, version }) {
+export async function statusSnapshot ({ cfg, relay, metrics, firewall, roster, version }) {
   const counters = await snapshotCounters(metrics)
   const net = relay.networkInfo()
   const bl = relay.relayStats()
@@ -99,9 +99,16 @@ export async function statusSnapshot ({ cfg, relay, metrics, firewall, version }
     },
     caps: caps(cfg),
     access: {
-      mode: cfg.allowlist ? 'allowlist' : 'open',
+      // Three states, and the difference matters to an operator staring at the
+      // page wondering why nobody connects: 'invite' with 0 members admits
+      // nobody, and says so.
+      mode: cfg.access === 'invite' ? 'invite' : (cfg.allowlist ? 'allowlist' : 'open'),
       allowlisted: firewall ? firewall.allowlisted : null,
-      banned: firewall ? firewall.bannedCount : 0
+      banned: firewall ? firewall.bannedCount : 0,
+      // Counts only. Never labels: this document is served to anyone who can
+      // reach the admin port, and a member label is a person's name.
+      members: roster ? { active: roster.active, total: roster.total } : null,
+      refusedLastHour: firewall ? firewall.refusedLastHour : 0
     },
     privacy: PRIVACY
   }

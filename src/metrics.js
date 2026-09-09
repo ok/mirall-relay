@@ -65,6 +65,14 @@ export function makeMetrics ({ collectDefault = true } = {}) {
       name: 'relay_ready',
       help: '1 when the relay is listening and bootstrapped'
     }),
+    // Counts only. A per-member label would be bounded by roster size, but a
+    // member label is a person's name and /metrics is not authenticated.
+    members: new client.Gauge({
+      registers,
+      name: 'relay_members_total',
+      help: 'Members on the roster, by state — active members are the ones admitted in invite mode',
+      labelNames: ['state'] // active | revoked
+    }),
     // blind-relay's own counters, refreshed on scrape
     blSessions: new client.Gauge({
       registers,
@@ -118,6 +126,16 @@ export async function snapshotCounters (metrics) {
     linksTornByCap: byLabel(torn, 'cap'),
     linksTornByCapTotal: total(torn)
   }
+}
+
+// Mirror the roster's counts into the registry, on scrape and for the same
+// reason as the line below: the roster is written by TWO processes, so a value
+// copied at load or on a reload callback goes stale the moment the admin API or
+// the CLI adds a member. Read it where it is asked for instead.
+export function mirrorMembers (metrics, roster) {
+  if (!roster || !metrics?.m.members) return
+  metrics.m.members.set({ state: 'active' }, roster.active)
+  metrics.m.members.set({ state: 'revoked' }, roster.total - roster.active)
 }
 
 // Mirror blind-relay's `server.stats` into the registry. Called immediately

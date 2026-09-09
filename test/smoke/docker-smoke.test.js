@@ -173,6 +173,36 @@ test('the CLI is usable inside the image', { skip }, async () => {
   assert.match(stdout, /SEED/)
 })
 
+test('invites can be minted inside the image, which has no shell', { skip }, async (t) => {
+  await buildImage()
+
+  const seedHex = b4a.toString(crypto.randomBytes(32), 'hex')
+  const name = 'mirall-relay-smoke-4'
+  t.after(() => removeContainer(name))
+  await runContainer(name, seedHex)
+  await waitForHealthz()
+
+  // `docker exec` runs the binary directly; there is no shell in the image, so
+  // this is the ONLY way an operator reaches the roster on a running container.
+  const mint = await execFile('docker', [
+    'exec', name, '/nodejs/bin/node', 'bin/mirall-relay.js', 'invite', 'create', 'smoke'
+  ])
+  assert.match(mint.stdout, /^invite\s+mirall:\/\/relay\//m)
+
+  const listed = await execFile('docker', [
+    'exec', name, '/nodejs/bin/node', 'bin/mirall-relay.js', 'invite', 'list'
+  ])
+  assert.match(listed.stdout, /^smoke\s+\w{52}\s.*active$/m)
+  // MIRALL_RELAY_ROSTER_FILE points at /data, so the roster rides the volume the
+  // seed already depends on rather than the container's writable layer.
+  assert.match(listed.stdout, /\/data\/members\.json/)
+
+  const revoked = await execFile('docker', [
+    'exec', name, '/nodejs/bin/node', 'bin/mirall-relay.js', 'invite', 'revoke', 'smoke'
+  ])
+  assert.match(revoked.stdout, /revoked smoke/)
+})
+
 // Guard against a silently mis-scoped skip: if docker IS available the suite
 // must have actually run something.
 test('docker availability is reported honestly', () => {

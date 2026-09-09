@@ -24,6 +24,9 @@ const SPEC = {
   'admin-port': ['ADMIN_PORT', asInt],
   'admin-ui': ['ADMIN_UI', asBool],
   'admin-allowed-hosts': ['ADMIN_ALLOWED_HOSTS', asList],
+  'admin-write': ['ADMIN_WRITE', asBool],
+  'admin-token': ['ADMIN_TOKEN', asString],
+  'admin-token-file': ['ADMIN_TOKEN_FILE', asString],
   // caps
   'max-sessions-per-key': ['MAX_SESSIONS_PER_KEY', asInt],
   'max-active-links': ['MAX_ACTIVE_LINKS', asInt],
@@ -35,6 +38,8 @@ const SPEC = {
   'over-rate-grace-ms': ['OVER_RATE_GRACE_MS', asInt],
   'meter-ms': ['METER_MS', asInt],
   // access control
+  access: ['ACCESS', asAccessMode],
+  'roster-file': ['ROSTER_FILE', asString],
   allowlist: ['ALLOWLIST', asList],
   banlist: ['BANLIST', asList],
   // labels / ops
@@ -63,6 +68,9 @@ export const DEFAULTS = Object.freeze({
   // Extra Host header values accepted when the admin server is bound to loopback.
   // See src/admin-http.js — the guard is inert on any other bind.
   adminAllowedHosts: null,
+  adminWrite: true, // false removes /admin/* entirely
+  adminToken: null, // prefer the file: env vars leak into `docker inspect`
+  adminTokenFile: './.keys/admin-token',
 
   // Per DEVICE, not per user or per plane. The connection a peer makes TO the
   // relay uses its DHT node's defaultKeyPair (hyperdht/lib/connect.js:47,793 —
@@ -80,7 +88,15 @@ export const DEFAULTS = Object.freeze({
   overRateGraceMs: 5000, // sustained-over-rate window before tearing a link
   meterMs: 1000,
 
-  allowlist: null, // null -> open relay; a list -> only these keys may connect
+  // 'open'   — anyone may connect; BANLIST and the caps do the work
+  // 'invite' — only roster members and ALLOWLIST entries may connect
+  //
+  // Explicit on purpose. Inferring "private" from a non-empty list means
+  // revoking the last member silently reopens the relay to the internet, which
+  // is the one mistake this feature must not make possible.
+  access: 'open',
+  rosterFile: './.keys/members.json',
+  allowlist: null, // in open mode: null -> open relay; a list -> only these keys
   banlist: null,
 
   region: 'unknown',
@@ -98,6 +114,12 @@ function asInt (v) {
   const n = Number(v)
   if (!Number.isInteger(n)) throw new Error(`expected an integer, got ${JSON.stringify(v)}`)
   return n
+}
+
+function asAccessMode (v) {
+  const s = String(v).trim().toLowerCase()
+  if (s !== 'open' && s !== 'invite') throw new Error(`expected open or invite, got ${JSON.stringify(v)}`)
+  return s
 }
 
 function asBool (v) {
@@ -223,6 +245,7 @@ export function validate (c) {
   if (c.sessionRate < 1) throw new Error('sessionRate must be >= 1')
   if (c.overRateGraceMs < 0) throw new Error('overRateGraceMs must be >= 0')
   if (c.meterMs < 10) throw new Error('meterMs must be >= 10')
+  if (c.access !== 'open' && c.access !== 'invite') throw new Error('access must be open or invite')
   if (!c.seed && !c.seedFile && !c.seedSecretFile) throw new Error('one of seed, seedSecretFile or seedFile is required')
   if (c.allowlist) for (const k of c.allowlist) decodeKeyOrThrow(k)
   if (c.banlist) for (const k of c.banlist) decodeKeyOrThrow(k)

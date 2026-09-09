@@ -44,6 +44,8 @@ FROM gcr.io/distroless/nodejs22-debian12:nonroot
 
 ENV NODE_ENV=production \
     MIRALL_RELAY_SEED_FILE=/data/seed \
+    MIRALL_RELAY_ROSTER_FILE=/data/members.json \
+    MIRALL_RELAY_ADMIN_TOKEN_FILE=/data/admin-token \
     MIRALL_RELAY_ADMIN_HOST=0.0.0.0 \
     MIRALL_RELAY_ADMIN_PORT=9200 \
     MIRALL_RELAY_PORT=49737
@@ -52,10 +54,16 @@ WORKDIR /app
 COPY --from=build --chown=65532:65532 /app /app
 COPY --from=build --chown=65532:65532 /data /data
 
-# The seed lives here. MOUNT THIS, or the relay mints a new identity on every
-# container replacement and every client configured with the old key is stranded.
-# A read-only secret at /run/secrets/relay_seed takes precedence and is read
-# in-process (no entrypoint script needed).
+# The seed lives here, and so does members.json — every member's seed, which is
+# the same class of secret. MOUNT THIS, or the relay mints a new identity on
+# every container replacement, every client configured with the old key is
+# stranded, and every membership is lost with it. A read-only secret at
+# /run/secrets/relay_seed takes precedence and is read in-process (no entrypoint
+# script needed).
+#
+# The invite CLI writes the same volume, through the node entrypoint because
+# there is no shell:
+#   docker exec <c> /nodejs/bin/node bin/mirall-relay.js invite create <label>
 VOLUME ["/data"]
 
 # DHT traffic is UDP and must be reachable from the internet for hole-punching.

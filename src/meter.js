@@ -26,7 +26,7 @@ import { monotonicMs } from './clock.js'
 // abusive. Hand it to the firewall.
 export const BAN_AFTER_VIOLATIONS = 3
 
-export function makeMeter (cfg, metrics, logger, firewall, { now = monotonicMs, autoStart = true } = {}) {
+export function makeMeter (cfg, metrics, logger, firewall, { now = monotonicMs, autoStart = true, onBan = null } = {}) {
   const links = new Set() // { stream, keyHex, startedAt, lastBytes, lastAt, overRateSince }
   const sessionsByKey = new Map() // keyHex -> open session count
   const violations = new Map() // keyHex -> cap-teardown count
@@ -130,6 +130,10 @@ export function makeMeter (cfg, metrics, logger, firewall, { now = monotonicMs, 
     if (count >= BAN_AFTER_VIOLATIONS && firewall && !firewall.isBanned(rec.keyHex)) {
       firewall.ban(rec.keyHex)
       logger?.warn({ key: rec.keyHex, violations: count }, 'banning peer after repeated cap violations')
+      // Same gap as revocation: a ban that leaves the offender's existing links
+      // running only takes effect on their next reconnect, which for a peer
+      // saturating a link is never.
+      onBan?.(rec.keyHex)
     }
   }
 

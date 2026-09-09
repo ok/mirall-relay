@@ -41,8 +41,26 @@ export function reachabilitySignature (reachability) {
   ].join('|')
 }
 
+// The access card has the same problem the reachability card does: the verdict
+// sentence, the "refusing everyone" warning and the conditional rows are all
+// server-rendered with no data-field, so applyFields cannot touch them. An
+// operator who mints the first invite while watching this page would otherwise
+// see the Members row tick to 1 under a heading still saying nobody may connect.
+export function accessSignature (access) {
+  if (!access) return ''
+  return [
+    access.mode,
+    access.members && access.members.active,
+    access.members && access.members.total,
+    access.allowlisted
+  ].join('|')
+}
+
 export function shouldReload (status, dataset) {
-  return reachabilitySignature(status.reachability) !== dataset.reachability
+  if (reachabilitySignature(status.reachability) !== dataset.reachability) return true
+  // Only when the page actually stamped one: a dataset from an older render has
+  // no access signature, and reloading on that would be a loop.
+  return dataset.access !== undefined && accessSignature(status.access) !== dataset.access
 }
 
 export function applyFields (root, status) {

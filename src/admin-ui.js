@@ -14,7 +14,7 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { encodeQr, qrSvg } from './qr.js'
 import { formatBytes, formatCount, formatField, formatMs, formatRate } from './format.js'
-import { reachabilitySignature } from './ui.js'
+import { accessSignature, reachabilitySignature } from './ui.js'
 
 // Served verbatim to the browser. They live in src/ alongside everything else
 // rather than in a src/ui/ of their own: format.js and ui.js are SOURCE that the
@@ -167,6 +167,47 @@ function plain (value, fallback = '—') {
   return value === null || value === undefined || value === '' ? fallback : escapeHtml(value)
 }
 
+// Three modes, in plain language, because the page is where an operator finds
+// out why nobody is connecting.
+function accessSentence (access) {
+  const members = access.members ? access.members.active : 0
+  if (access.mode === 'invite') {
+    return members === 0
+      ? 'No members yet — this relay is refusing everyone.'
+      : `${formatCount(members)} ${members === 1 ? 'member' : 'members'} may connect. Everyone else is refused.`
+  }
+  if (access.mode === 'allowlist') {
+    return `${formatCount(access.allowlisted)} ${access.allowlisted === 1 ? 'key' : 'keys'} may connect. Everyone else is refused.`
+  }
+  return "Anyone with this relay's key can connect. Bans and the caps are your only limits."
+}
+
+// The loud case. An invite-mode relay with an empty roster is working exactly as
+// configured and is indistinguishable from a broken one, so it gets the fix.
+function accessWarning (access) {
+  if (access.mode !== 'invite') return ''
+  if (access.members && access.members.active > 0) return ''
+  return '<p class="note warn">Mint the first invite with <code>mirall-relay invite create &lt;label&gt;</code>, then send the invite line to that person. Until then every connection is refused.</p>'
+}
+
+function accessRows (access) {
+  const out = [['Mode', escapeHtml(access.mode)]]
+  const members = access.members ? access.members.active : null
+  if (access.members) {
+    out.push(['Members', field('access.members.active', 'count', members)])
+    const revoked = access.members.total - access.members.active
+    if (revoked > 0) out.push(['Revoked members', escapeHtml(formatCount(revoked))])
+  }
+  // Only when it says something the row above did not: the admitted set is the
+  // union of the roster and ALLOWLIST, so an equal number means no static keys.
+  if (access.allowlisted !== null && access.allowlisted !== undefined && access.allowlisted !== members) {
+    out.push(['Keys admitted', field('access.allowlisted', 'count', access.allowlisted)])
+  }
+  out.push(['Banned keys', field('access.banned', 'count', access.banned)])
+  out.push(['Connection attempts refused, last hour', field('access.refusedLastHour', 'count', access.refusedLastHour || 0)])
+  return out
+}
+
 export function renderPage (status) {
   const { identity, reachability, traffic, caps, access, labels } = status
   const key = identity.publicKey
@@ -234,7 +275,7 @@ export function renderPage (status) {
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="ui.css">
 </head>
-<body data-reachability="${escapeHtml(reachabilitySignature(reachability))}">
+<body data-reachability="${escapeHtml(reachabilitySignature(reachability))}" data-access="${escapeHtml(accessSignature(access))}">
 <header class="masthead">
   <div>
     <h1>mirall-relay</h1>
@@ -296,14 +337,22 @@ export function renderPage (status) {
           ['Active links', escapeHtml(formatCount(caps.maxActiveLinks))],
           ['Bytes per link, per direction', escapeHtml(formatBytes(caps.maxLinkBytes))],
           ['Rate per link, per direction', escapeHtml(formatRate(caps.maxLinkRateBytesPerSecond))],
-          ['Maximum link duration', escapeHtml(formatMs(caps.maxLinkDurationMs))],
-          ['Access', access.mode === 'allowlist' ? `allowlist (${escapeHtml(formatCount(access.allowlisted))} keys)` : 'open'],
-          ['Banned keys', field('access.banned', 'count', access.banned)]
+          ['Maximum link duration', escapeHtml(formatMs(caps.maxLinkDurationMs))]
         ])}
       </dl>
       <p class="hint">Byte and rate caps apply per direction: a relayed connection is two bridged streams and each counts only what enters it.</p>
     </section>
   </div>
+
+  <section class="card access">
+    <h2>Who may connect</h2>
+    <p class="verdict">${escapeHtml(accessSentence(access))}</p>
+    ${accessWarning(access)}
+    <dl class="facts">
+      ${rows(accessRows(access))}
+    </dl>
+    <p class="hint">A refused peer cannot tell a closed door from an offline relay — its handshake simply fails. This counter is the only place that difference is visible, so a friend who cannot connect shows up here. A small number is normal on an invite relay and is not a signal: a member's own Mirall can hand this relay's key to their peers, who are then refused having never been given an invite.</p>
+  </section>
 
   <section class="card privacy">
     <h2>What this relay can and cannot see</h2>

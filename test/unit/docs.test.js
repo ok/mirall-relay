@@ -16,6 +16,7 @@ const CONFIG = read('src/config.js')
 const HELP = read('bin/mirall-relay.js')
 const ENV_EXAMPLE = read('deploy/mirall-relay.env.example')
 const README = read('README.md')
+const OPERATIONS = read('OPERATIONS.md')
 
 // Every env suffix declared in config.js's SPEC table.
 const OPTIONS = [...CONFIG.matchAll(/\['([A-Z_]+)',/g)].map((m) => m[1])
@@ -48,7 +49,7 @@ test('every option appears in the deployment env template', () => {
 // an operator reaches for under pressure have to be there.
 const README_MUST_COVER = [
   'SEED_FILE', 'SEED', 'PORT', 'ASSUME_REACHABLE', 'ADMIN_HOST',
-  'ALLOWLIST', 'BANLIST',
+  'ACCESS', 'ALLOWLIST', 'BANLIST',
   'MAX_SESSIONS_PER_KEY', 'MAX_ACTIVE_LINKS', 'MAX_LINK_RATE', 'MAX_LINK_BYTES'
 ]
 
@@ -68,4 +69,22 @@ test('both access-control lists are explained, not just listed', () => {
   // silently locking a relay against itself.
   assert.match(README, /[Bb]oth peers/, 'the both-peers allowlist rule must be stated')
   assert.match(README, /BANLIST/, 'the banlist must be documented alongside the allowlist')
+})
+
+test('the invite workflow is documented, not just the flags', () => {
+  // A member roster nobody can find out how to fill is a feature that does not
+  // exist. The flag table alone does not tell an operator how to mint one.
+  assert.match(README, /mirall-relay invite create/, 'the README must show how to mint an invite')
+  assert.match(OPERATIONS, /invite revoke/, 'and OPERATIONS must carry the revoke runbook')
+  assert.match(README, /ACCESS=invite|`invite`/, 'and name the mode that turns it on')
+})
+
+test('the roster is named beside the seed in the backup rules', () => {
+  // Second piece of durable state, and the one that reads as disposable right up
+  // until it locks out every member.
+  // Whitespace-tolerant: these are wrapped prose, not literals, and a reflow
+  // must not read as the sentence having been deleted.
+  assert.match(OPERATIONS, /members\.json/, 'the roster must appear in the runbook')
+  assert.match(OPERATIONS, /locks\s+out\s+every\s+member/, 'with what losing it costs')
+  assert.match(OPERATIONS, /hands\s+over\s+every\s+membership/, 'and what leaking it costs')
 })

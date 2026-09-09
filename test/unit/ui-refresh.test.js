@@ -4,7 +4,7 @@
 // testable without a browser or a DOM library.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readField, shouldReload, applyFields, reachabilitySignature } from '../../src/ui.js'
+import { readField, shouldReload, applyFields, accessSignature, reachabilitySignature } from '../../src/ui.js'
 import { formatField } from '../../src/format.js'
 
 const STATUS = {
@@ -22,7 +22,7 @@ const STATUS = {
     bound: { host: '0.0.0.0', port: 49737, family: 4 }
   },
   traffic: { bytesRelayed: 1536, pairings: { matched: 7 } },
-  access: { banned: 0 }
+  access: { mode: 'open', banned: 0, allowlisted: null, members: null, refusedLastHour: 0 }
 }
 
 function fakeNode (field, format, textContent = '') {
@@ -100,4 +100,30 @@ test('the signature ignores what the page patches in place', () => {
   const dataset = { reachability: reachabilitySignature(STATUS.reachability) }
   const churn = { reachability: { ...STATUS.reachability, dhtNodes: 999, bootstrapped: false } }
   assert.equal(shouldReload(churn, dataset), false)
+})
+
+test('a change in the access card asks for the page, not a field patch', () => {
+  // accessSentence and accessWarning are server-rendered prose with no
+  // data-field, so applyFields cannot reach them: minting the first invite while
+  // the page is open has to reload it or the heading keeps saying nobody may
+  // connect while the Members row reads 1.
+  const invite = { ...STATUS, access: { mode: 'invite', members: { active: 0, total: 0 }, allowlisted: 0, banned: 0 } }
+  const dataset = {
+    reachability: reachabilitySignature(invite.reachability),
+    access: accessSignature(invite.access)
+  }
+  assert.equal(shouldReload(invite, dataset), false, 'nothing has moved')
+
+  const minted = { ...invite, access: { ...invite.access, members: { active: 1, total: 1 }, allowlisted: 1 } }
+  assert.equal(shouldReload(minted, dataset), true, 'a first member changes the prose')
+
+  const flipped = { ...invite, access: { ...invite.access, mode: 'open' } }
+  assert.equal(shouldReload(flipped, dataset), true, 'and so does the mode')
+})
+
+test('a dataset from a render that stamped no access signature does not loop', () => {
+  // An operator holding a page open across an upgrade must not get a reload every
+  // five seconds forever.
+  const dataset = { reachability: reachabilitySignature(STATUS.reachability) }
+  assert.equal(shouldReload(STATUS, dataset), false)
 })
