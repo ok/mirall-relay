@@ -285,9 +285,7 @@ test('the remediation list does not point at documentation that does not exist',
 })
 
 test('the page always answers "how do I add a member", not only when empty', () => {
-  // It used to say this ONLY in the empty-roster warning, so the page told you
-  // how to add the first member and then never mentioned it again — the second
-  // invite had no route on screen at all.
+  // The invite-management route must stay visible after the first member exists.
   const empty = renderPage(status({ access: { mode: 'invite', members: { active: 0, total: 0 }, allowlisted: 0, banned: 0, managed: true } }))
   assert.match(empty, /href="admin\/"/, 'the empty case points at the admin page')
   assert.match(empty, /invite create/, 'and at the CLI')

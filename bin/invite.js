@@ -43,12 +43,8 @@ function line (label, value) {
   return `${label.padEnd(8)} ${value}\n`
 }
 
-// Separate the label from the relay flags around it, understanding all three
-// forms src/config.js's parseArgv takes: --flag value, --flag=value and a bare
-// --flag. Filtering on the '--' prefix alone dropped the VALUE of the spaced
-// form, so `invite list --roster-file /data/m.json` died claiming the flag
-// needed one — and `invite create --roster-file /data/m.json ben` silently took
-// the path as the label.
+// Labels are positional, but relay flags may use --flag value, --flag=value or a
+// bare boolean flag. Preserve the value side of spaced flags when splitting.
 function split (argv) {
   const flags = []
   const positional = []

@@ -28,10 +28,8 @@ const ASSETS = {
 // set MIRALL_RELAY_ADMIN_UI=false turns off.
 export const uiPaths = new Set(['/', '/status.json', '/qr.svg', ...Object.keys(ASSETS)])
 
-// Read on first use, not at import. Reading at module load made CSS assets a
-// hard boot dependency of the whole CLI: any packaging that shipped only src/*.js
-// turned "the status page 404s" into "the relay will not start and you cannot run
-// the key ceremony", with an error naming a stylesheet.
+// Read on first use, not at import. Optional browser assets must not become a
+// hard boot dependency for the CLI or relay process.
 let assetCache = null
 export function loadAssets () {
   if (!assetCache) {
@@ -180,9 +178,8 @@ function accessWarning (access) {
   return `<p class="note warn">${manageSentence(access)}</p>`
 }
 
-// Shown whether or not the roster is empty. It used to appear ONLY in the loud
-// case above, which meant the page told you how to add the first member and then
-// never mentioned it again — the second invite had no route on screen at all.
+// Shown whether or not the roster is empty, so the invite-management route stays
+// discoverable after the first member exists.
 function manageHint (access) {
   if (access.mode !== 'invite') return ''
   if (!access.members || access.members.active === 0) return '' // already said, loudly

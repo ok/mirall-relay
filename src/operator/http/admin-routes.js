@@ -42,6 +42,8 @@ export function createAdminRoutes ({ cfg, relay, firewall, roster, meter, logger
 
       return notFound(res)
     } catch (err) {
+      // Malformed roster data is a server fault; malformed request data is a
+      // client fault. Keep that distinction centralized at the HTTP boundary.
       const BY_CODE = { duplicate: 409, 'not-found': 404, malformed: 500 }
       const status = err.status || BY_CODE[err.code] || (err.code ? 400 : 500)
       if (status >= 500) logger?.warn({ err: err.message, path }, 'admin write failed')
@@ -63,6 +65,8 @@ async function createInvite ({ req, res, roster, relay, logger }) {
 }
 
 function listInvites ({ res, cfg, firewall, roster, meter, relay, reveal }) {
+  // /admin/invites is the token-protected roster view. Tickets are included only
+  // when explicitly requested and only for active members.
   const members = roster.listPublic().map((m) => ({
     ...m,
     sessions: meter.sessionCount(hexOfKey(m.publicKey)),

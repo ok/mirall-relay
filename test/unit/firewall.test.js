@@ -116,7 +116,7 @@ test('an active window survives garbage collection', () => {
 })
 
 test('open mode with no allowlist is unchanged', () => {
-  // Regression: the roster must not gate a relay that never asked to be gated.
+  // A roster file must not gate a relay that never asked to be gated.
   const { fw } = make({ access: 'open' }, fakeClock(), memberSet(HEX_B))
   assert.equal(fw.firewall(KEY_A), false)
   assert.equal(fw.allowlisted, null)

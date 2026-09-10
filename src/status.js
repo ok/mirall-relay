@@ -67,6 +67,8 @@ export function accessBlock (cfg, firewall, roster) {
   }
 }
 
+// Public status payload consumed by the server-rendered page and operators'
+// scripts. Keep it anonymous: no member labels, no tickets, no seed material.
 export async function statusSnapshot ({ cfg, relay, metrics, firewall, roster, version }) {
   const counters = await snapshotCounters(metrics)
   const net = relay.networkInfo()

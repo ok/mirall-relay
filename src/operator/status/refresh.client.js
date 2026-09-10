@@ -12,9 +12,8 @@ const LIVE_MS = 5000
 const BACKOFF_MS = 30000
 const FAILURES_BEFORE_BACKOFF = 3
 // A fetch whose connection is open but never answered has no default timeout in
-// any browser. Without this the await never settles: schedule() is never reached,
-// `failures` never increments, and the loop dies while the page keeps presenting
-// minutes-old counters as live — the exact lie the .stale styling exists to stop.
+// any browser. Bound each request so the refresh loop can mark stale counters
+// stale instead of presenting them as live indefinitely.
 const REQUEST_TIMEOUT_MS = 10000
 
 export function readField (source, path) {
@@ -23,9 +22,8 @@ export function readField (source, path) {
 
 // Everything in the reachability card that is NOT a data-field: the verdict prose,
 // the symmetric-NAT note, the remediation list, the observed address, the local
-// socket. All server-rendered, none of them constant — dht-rpc's NAT sampler
-// starts empty and learns the host and port minutes into a run, so a page left
-// open would otherwise never show the symmetric-NAT warning at all.
+// socket. All server-rendered, none of them constant: dht-rpc's NAT sampler
+// starts empty and learns the host and port minutes into a run.
 //
 // The server stamps this into data-reachability and the browser compares; one
 // definition, so the two cannot disagree about what counts as a change.
@@ -44,9 +42,8 @@ export function reachabilitySignature (reachability) {
 
 // The access card has the same problem the reachability card does: the verdict
 // sentence, the "refusing everyone" warning and the conditional rows are all
-// server-rendered with no data-field, so applyFields cannot touch them. An
-// operator who mints the first invite while watching this page would otherwise
-// see the Members row tick to 1 under a heading still saying nobody may connect.
+// server-rendered with no data-field, so applyFields cannot touch them. Reload
+// when they change instead of patching counters under stale prose.
 export function accessSignature (access) {
   if (!access) return ''
   return [

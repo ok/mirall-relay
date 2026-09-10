@@ -190,8 +190,8 @@ test('a sustained overrun past the grace window tears the link down', () => {
 })
 
 test('one over-cap link does not stop the others from being checked', () => {
-  // Regression guard: an early `return` inside the sampling loop would leave
-  // every link after the first offender unmetered until the next tick.
+  // One offender must not end the sampling pass; later links need the same cap
+  // checks in the same tick.
   const { meter, metrics } = make({ maxLinkBytes: 100 })
   const a = fakeStream()
   const b = fakeStream()

@@ -79,10 +79,8 @@ test('any change to the server-rendered reachability block asks for the page aga
   const changes = [
     ['state', { state: 'firewalled' }],
     ['probed', { probed: false }],
-    // The one that mattered: dht-rpc's NAT sampler starts empty and learns the
-    // host and port minutes into a run, so randomization is not a boot constant.
-    // Keying the reload on state alone meant a page left open could never show
-    // the symmetric-NAT warning the runbook advertises it for.
+    // dht-rpc's NAT sampler learns host and port after boot, so randomization is
+    // part of the server-rendered reachability state, not a boot constant.
     ['portRandomized', { portRandomized: true }],
     ['publicHost', { publicHost: '198.51.100.7' }],
     ['publicPort', { publicPort: 0 }],

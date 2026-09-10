@@ -156,10 +156,8 @@ test('bans can be set and cleared over the surface', async (t) => {
 
 test('a malformed percent-escape in the path answers rather than hanging', async (t) => {
   const { call } = await withRelay(t)
-  // decodeURIComponent throws URIError on %zz. Outside the handler's try that
-  // rejection escaped, no response was written, and the socket was pinned for
-  // the life of the process — one request per leak, repeatable by anyone with
-  // the token.
+  // decodeURIComponent throws URIError on %zz; the HTTP boundary must translate
+  // it into a response so the request cannot pin its socket.
   const res = await call('/admin/invites/%zz', { method: 'DELETE' })
   assert.equal(res.status, 500)
   assert.equal((await res.json()).error, 'internal error')
@@ -203,8 +201,7 @@ test('a ttlMs that is not a positive number is refused, not silently permanent',
 
 test('an unparsable key is 400 on the DELETE path too', async (t) => {
   const { call } = await withRelay(t)
-  // idEnc.normalize(id) used to be evaluated before hexOfKey(id) in the same
-  // argument list, so this reported 500 and logged the server as at fault.
+  // Key parsing errors are client faults on every admin path.
   const res = await call('/admin/bans/garbage', { method: 'DELETE' })
   assert.equal(res.status, 400)
 })

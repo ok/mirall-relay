@@ -19,6 +19,10 @@ export const ROSTER_VERSION = 1
 const RELOAD_DEBOUNCE_MS = 150
 const POLL_MS = 5000
 
+// On-disk schema: { version: 1, members: [{ label, publicKey, seedHex, created,
+// revoked }] }. seedHex is required to reprint an invite; listPublic never
+// exposes it.
+
 // Labels reach a CLI argument and a URL path segment, so they are deliberately
 // narrow. Not a display name: the operator's own handle for a person.
 const LABEL = /^[a-z0-9][a-z0-9._-]{0,63}$/i
@@ -166,9 +170,8 @@ export function openRoster (cfg, { watch = false, onChange = null, logger = null
     adopt(readFile(file), 'pre-write')
   }
 
-  // Only assign after the bytes are down. Mutating first meant a failed write
-  // left a phantom member in memory that the NEXT successful write committed —
-  // and admitted at the firewall — for an operation the caller was told failed.
+  // Only assign after the bytes are down, so a failed write cannot leave a
+  // phantom member in memory for the next successful write to commit.
   function commit (next) {
     writeFile(file, next)
     doc = next
