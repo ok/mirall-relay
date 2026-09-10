@@ -8,7 +8,8 @@
 //
 // Output is deliberately plain so it survives `docker logs` and a copy-paste
 // into a chat window.
-import { loadConfig } from '../src/config.js'
+import { parseLongOptions } from '../src/cli-args.js'
+import { CONFIG_FLAG_SPEC, configFromFlags } from '../src/config.js'
 import fs from 'node:fs'
 import { seedSource, resolveSeed, keyPairFromSeed } from '../src/keys.js'
 import { openRoster } from '../src/roster.js'
@@ -43,24 +44,6 @@ function line (label, value) {
   return `${label.padEnd(8)} ${value}\n`
 }
 
-// Labels are positional, but relay flags may use --flag value, --flag=value or a
-// bare boolean flag. Preserve the value side of spaced flags when splitting.
-function split (argv) {
-  const flags = []
-  const positional = []
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]
-    if (!arg.startsWith('--')) {
-      positional.push(arg)
-      continue
-    }
-    flags.push(arg)
-    const spaced = !arg.includes('=') && argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')
-    if (spaced) flags.push(argv[++i])
-  }
-  return { flags, positional }
-}
-
 export function inviteCommand (argv = []) {
   const [command, ...rest] = argv
   if (!command || command === '--help' || command === '-h') {
@@ -68,11 +51,17 @@ export function inviteCommand (argv = []) {
     return
   }
 
-  const { flags, positional } = split(rest)
-
   let cfg
+  let positional
   try {
-    cfg = loadConfig(flags)
+    // A label is positional and may sit on either side of a relay flag, so the
+    // whole tail is parsed at once rather than split before the config sees it.
+    const parsed = parseLongOptions(rest, CONFIG_FLAG_SPEC, {
+      allowPositionals: true,
+      bareBooleanValue: ''
+    })
+    positional = parsed.positionals
+    cfg = configFromFlags(parsed.flags)
   } catch (err) {
     // Same shape as the server's: a config error names the variable and exits 78.
     process.stderr.write(`configuration error: ${err.message}\n`)
