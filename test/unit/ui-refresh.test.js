@@ -1,11 +1,11 @@
-// The browser refresh loop's decisions. src/ui/ui.js only touches the DOM inside
+// The browser refresh loop's decisions. refresh.client.js only touches the DOM inside
 // start(), which is guarded on `document` existing — so importing it here runs
 // nothing, and the three things that can silently stop the page updating are
 // testable without a browser or a DOM library.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readField, shouldReload, applyFields, accessSignature, reachabilitySignature } from '../../src/ui.js'
-import { formatField } from '../../src/format.js'
+import { readField, shouldReload, applyFields, accessSignature, reachabilitySignature } from '../../src/operator/status/refresh.client.js'
+import { formatField } from '../../src/operator/format.js'
 
 const STATUS = {
   uptimeSeconds: 11520,

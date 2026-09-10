@@ -76,9 +76,11 @@ hole-punch to each other, without ever holding a session key.
   surface.
 - `src/firewall.js`, `src/meter.js` — admission control and the byte/rate/duration/
   concurrency caps, enforced during the Noise handshake and on live bridges.
-- `src/admin-http.js`, `src/admin-ui.js`, `src/ui.js`, `src/ui.css`, `src/qr.js` — the
-  operator surface on the admin port: Prometheus metrics, JSON endpoints, and the
-  server-rendered status page.
+- `src/admin-http.js`, `src/operator/http/`, `src/operator/status/`,
+  `src/operator/members/`, `src/operator/assets.js`, `src/operator/format.js`,
+  `src/operator/copy-button.js`, `src/qr.js` — the operator surface on the admin port:
+  Prometheus metrics, JSON endpoints, the anonymous status page, and the token-gated
+  members page.
 
 **The seed is the only secret and the only durable state** — with `members.json` alongside
 it on an invite relay. Never log it, never commit it into a fixture, and never let a code

@@ -1,10 +1,5 @@
-// The copy-to-clipboard button, shared by both browser surfaces: the status
-// page's "Copy key" and the members page's "Copy invite".
-//
-// It was written twice, and the second copy immediately drifted — it lost the
-// clearTimeout guard, so clicking twice in quick succession let the FIRST click's
-// pending reset wipe the second's feedback and the copy looked like it failed.
-// One definition, so the two cannot diverge again.
+// Clipboard writes require a user gesture and are unavailable in some HTTP contexts.
+// Keep the fallback selectable so the ticket can still be copied.
 export function attachCopy (button, target, { idle, done = 'Copied', fallback = 'Selected — press ⌘C / Ctrl+C', resetMs = 2500 } = {}) {
   let timer = null
 

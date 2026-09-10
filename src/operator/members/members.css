@@ -1,4 +1,4 @@
-/* The management page. Deliberately a separate stylesheet from ui.css: that one
+/* The management page. Deliberately a separate stylesheet from status.css: that one
    is served under MIRALL_RELAY_ADMIN_UI, and turning the anonymous status page
    off must not leave the only way to mint an invite unstyled.
 
