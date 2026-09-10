@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import b4a from 'b4a'
 import { makeFirewall } from '../../src/firewall.js'
-import { fakeClock } from '../../src/clock.js'
+import { fakeClock } from '../helpers/clock.js'
 import { fakeMetrics } from '../helpers/fake-stream.js'
 import { DEFAULTS } from '../../src/config.js'
 

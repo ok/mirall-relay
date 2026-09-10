@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { makeMeter, BAN_AFTER_VIOLATIONS } from '../../src/meter.js'
-import { fakeClock } from '../../src/clock.js'
+import { fakeClock } from '../helpers/clock.js'
 import { fakeStream, fakeMetrics, fakeFirewall } from '../helpers/fake-stream.js'
 import { DEFAULTS } from '../../src/config.js'
 
