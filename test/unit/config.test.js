@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   loadConfig, validate, parseArgv, asBytes, asList,
-  decodeKeyOrThrow, parseBootstrapEntry, bootstrapNodes, DEFAULTS
+  decodeKeyOrThrow, parseBootstrapEntry, bootstrapNodes, DEFAULTS,
+  OPTIONS, CONFIG_FLAG_SPEC, validateOptionsMetadata, helpOptions
 } from '../../src/config.js'
 
 const VALID_KEY = 'a'.repeat(64) // 32 bytes as hex
@@ -187,4 +188,38 @@ test('the admin write surface is on by default with a file-backed token', () => 
 test('the new options are frozen with the rest', () => {
   const cfg = loadConfig([], { MIRALL_RELAY_ACCESS: 'invite' })
   assert.ok(Object.isFrozen(cfg), 'the roster and the ban set are the mutable state, not cfg')
+})
+
+test('every option carries the metadata the derived surfaces need', () => {
+  assert.doesNotThrow(() => validateOptionsMetadata(OPTIONS))
+  for (const o of OPTIONS) {
+    assert.equal(typeof o.parse, 'function', `${o.flag} needs a parser`)
+    assert.equal(typeof o.help, 'string', `${o.flag} needs a help line`)
+    assert.equal(typeof o.category, 'string', `${o.flag} needs a category`)
+    assert.ok('envExample' in o, `${o.flag} must say what the env template does with it`)
+    assert.ok(Object.isFrozen(o))
+  }
+})
+
+test('a flag, env suffix or key claimed twice is a hard error', () => {
+  // Two options sharing any of the three would let one silently shadow the other.
+  const dup = (field, value) => [OPTIONS[0], { ...OPTIONS[0], flag: 'x', env: 'X', key: 'x', [field]: value }]
+  assert.throws(() => validateOptionsMetadata(dup('flag', 'seed')), /duplicate flag seed/)
+  assert.throws(() => validateOptionsMetadata(dup('env', 'SEED')), /duplicate env SEED/)
+  assert.throws(() => validateOptionsMetadata(dup('key', 'seed')), /duplicate key seed/)
+})
+
+test('the derived surfaces stay in step with the option table', () => {
+  assert.equal(DEFAULTS.adminPort, 9200)
+  assert.equal(DEFAULTS.seedFile, './.keys/seed')
+  assert.deepEqual(Object.keys(DEFAULTS), OPTIONS.map((o) => o.key))
+  assert.deepEqual(Object.keys(CONFIG_FLAG_SPEC), OPTIONS.map((o) => o.flag))
+})
+
+test('generated help lists every flag with its placeholder and default', () => {
+  const help = helpOptions()
+  assert.match(help, /^ {2}--seed-file PATH {11}seed file, generated on first run \[\.\/\.keys\/seed\]$/m)
+  assert.match(help, /^ {2}--ephemeral {16}do not join the DHT routing table \[false\]$/m)
+  for (const o of OPTIONS) assert.ok(help.includes(`--${o.flag}`), `${o.flag} is missing from --help`)
+  for (const line of help.split('\n')) assert.ok(line.length <= 78, `help line too wide: ${line}`)
 })
