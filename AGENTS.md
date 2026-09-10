@@ -68,7 +68,7 @@ hole-punch to each other, without ever holding a session key.
   from a config, so `bin/` and the integration tests wire the service identically.
 - `src/relay.js` — the HyperDHT node on a stable seed-derived identity, plus the
   `blind-relay` server that bridges the peers' already-encrypted streams.
-- `src/config.js` — the `SPEC` option table. Every option is both a flag and a
+- `src/config.js` — the `OPTIONS` metadata table. Every option is both a flag and a
   `MIRALL_RELAY_*` env var, and adding one carries a documentation obligation
   (`.claude/testing.md` §3).
 - `src/roster.js`, `src/ticket.js`, `src/admin-token.js` — invite membership: who may
