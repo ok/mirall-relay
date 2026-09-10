@@ -1,6 +1,6 @@
 import { mirrorMembers, mirrorRelayStats } from '../../metrics.js'
 import { capabilityDoc, statusSnapshot } from '../../status.js'
-import { loadAssets, uiPaths, etagFor, renderPage, standaloneQr } from '../../admin-ui.js'
+import { loadAssets, uiPaths, etagFor, renderPage, standaloneQr } from '../status/page.js'
 import { cached, json, notFound, send } from './responses.js'
 
 export function createPublicRoutes ({ cfg, metrics, relay, firewall, roster }) {

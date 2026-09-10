@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import net from 'node:net'
 import b4a from 'b4a'
-import { standaloneQr } from '../../src/admin-ui.js'
+import { standaloneQr } from '../../src/operator/status/page.js'
 import { createTestnet, startTestRelay, relayedPair, waitFor } from '../helpers/make-relay.js'
 
 async function withRelay (t, overrides = {}) {

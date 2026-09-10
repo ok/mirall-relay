@@ -2,7 +2,7 @@
 // be able to read off the screen without a terminal.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { loadAssets, uiPaths, escapeHtml, renderPage, publicKeyQr, standaloneQr, verdict } from '../../src/admin-ui.js'
+import { loadAssets, uiPaths, escapeHtml, renderPage, publicKeyQr, standaloneQr, verdict } from '../../src/operator/status/page.js'
 
 const KEY = 'yb3dq6h9c1x8kwmp4z7ejr5tn9adg2hf6bcxsq8vw3ymp4z7ejab'
 

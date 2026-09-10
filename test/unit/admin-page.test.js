@@ -2,7 +2,7 @@
 // no data, loads nothing external, and can actually be served.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { managePaths, PAGE_PATH, renderManagePage } from '../../src/admin-page.js'
+import { managePaths, PAGE_PATH, renderManagePage } from '../../src/operator/members/page.js'
 
 test('the shell is static and carries no member data', () => {
   const html = renderManagePage()
@@ -49,13 +49,13 @@ test('the client script never uses innerHTML', async () => {
   // dynamic node with textContent so there is no escaping to get wrong; the CSP
   // is the second line of defence, not the first.
   const { readFileSync } = await import('node:fs')
-  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   assert.ok(!/\.innerHTML|\.outerHTML|insertAdjacentHTML|document\.write\(/.test(source))
 })
 
 test('the token is kept for the tab only, never on disk', async () => {
   const { readFileSync } = await import('node:fs')
-  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   assert.match(source, /sessionStorage/)
   assert.ok(!/localStorage\s*\./.test(source), 'closing the tab must forget it')
   // A cookie would ride along on every request to this origin and turn a write
@@ -65,7 +65,7 @@ test('the token is kept for the tab only, never on disk', async () => {
 
 test('locking clears what it was protecting, it does not merely hide it', async () => {
   const { readFileSync } = await import('node:fs')
-  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   const lock = source.slice(source.indexOf('function lock ('), source.indexOf('function setPill ('))
   // Hiding left the invite ticket and every member's name in the DOM after
   // "forget token" — readable from devtools, find-in-page or any later script.
@@ -76,7 +76,7 @@ test('locking clears what it was protecting, it does not merely hide it', async 
 
 test('the page reveals one member at a time', async () => {
   const { readFileSync } = await import('node:fs')
-  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   // The bulk ?reveal=1 hands back a live bearer credential for every active
   // member; the page must not reach for it to show one person their invite.
   assert.ok(!/api\('invites\?reveal=1'\)/.test(source))
@@ -85,7 +85,7 @@ test('the page reveals one member at a time', async () => {
 
 test('the copy button is the shared one, not a second copy', async () => {
   const { readFileSync } = await import('node:fs')
-  const source = readFileSync(new URL('../../src/admin-page.client.js', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   // It was written twice and the copy immediately drifted, losing the
   // clearTimeout guard that stops a second click's feedback being wiped.
   assert.match(source, /import \{ attachCopy \} from '\.\/copy-button\.js'/)

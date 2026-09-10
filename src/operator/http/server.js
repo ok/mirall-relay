@@ -1,6 +1,6 @@
 import http from 'node:http'
-import { managePaths } from '../../admin-page.js'
-import { uiPaths } from '../../admin-ui.js'
+import { managePaths } from '../members/page.js'
+import { uiPaths } from '../status/page.js'
 import { createAdminRoutes } from './admin-routes.js'
 import { createPublicRoutes } from './public-routes.js'
 import { hostAllowed } from './host-guard.js'

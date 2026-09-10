@@ -90,8 +90,8 @@ test('the image starts, serves /healthz and derives the expected identity', { sk
   const metrics = await (await fetch(`http://127.0.0.1:${ADMIN_PORT}/metrics`)).text()
   assert.match(metrics, /relay_ready 1/)
 
-  // The page and its assets are not .js files, and the Dockerfile copies
-  // directories. If src/ui/ ever stops being shipped, this is where it shows up —
+  // The page and its assets are not all top-level .js files, and the Dockerfile
+  // copies directories. If src/operator/ ever stops being shipped, this is where it shows up —
   // everything else would keep passing while the browser surface 404s.
   const page = await (await fetch(`http://127.0.0.1:${ADMIN_PORT}/`)).text()
   assert.ok(page.includes(expected), 'the key the image derived must be on the page')

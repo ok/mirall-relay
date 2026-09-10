@@ -2,7 +2,7 @@
 // wrong rule here shows up twice.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { formatBytes, formatRate, formatCount, formatDuration, formatMs, formatField } from '../../src/format.js'
+import { formatBytes, formatRate, formatCount, formatDuration, formatMs, formatField } from '../../src/operator/format.js'
 
 test('formatBytes uses binary units, matching the units the caps are written in', () => {
   assert.equal(formatBytes(0), '0 B')
