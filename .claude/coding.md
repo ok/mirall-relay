@@ -134,6 +134,7 @@ Good:
 
 - Composition root: Build the full service from config in `src/index.js`, and have CLI and integration tests use the same wiring.
 - Config table: Add options through `SPEC` and `DEFAULTS` in `src/config.js`. Every option is both a flag and a `MIRALL_RELAY_*` env var.
+- CLI parsing: Parse every command line through `parseLongOptions` in `src/cli-args.js`. Do not hand-roll a second argv loop; `mirall-relay`, `invite`, `keygen`, and the probe must agree on `--flag value`, `--flag=value`, bare flags, positionals, and unknown-flag errors.
 - Strict boot validation: Reject invalid config early. Do not coerce nonsense values into a running relay.
 - Stable identity: Resolve the seed through `src/keys.js` and derive the HyperDHT identity once. Never log the seed.
 - Relay lifecycle: Keep HyperDHT, blind-relay, session indexing, and teardown ownership inside `RelayNode` in `src/relay.js`.
