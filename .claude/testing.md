@@ -15,7 +15,7 @@ actually touches.
 
 | Layer | Lives in | Runner | What it covers |
 |---|---|---|---|
-| **Unit** | `test/unit/*.test.js` | `npm run test:unit` (`node --test`) | Pure logic, no sockets: the config `SPEC` table, key and ticket encoding, the QR encoder, formatters, meter accounting, the status projection, the admin-UI render, the host guard. |
+| **Unit** | `test/unit/*.test.js` | `npm run test:unit` (`node --test`) | Pure logic, no sockets: the config `OPTIONS` table, key and ticket encoding, the QR encoder, formatters, meter accounting, the status projection, the admin-UI render, the host guard. |
 | **Integration** | `test/integration/*.test.js` | `npm run test:integration` | A real relay against a real (local) HyperDHT testnet: relayed round-trips, byte counters on natively-bridged streams, every cap tearing a real bridge down, admission control, invite membership, the `/admin/*` surface. Timing-sensitive — CI allows 15 minutes. |
 | **Smoke** | `test/smoke/*.test.js` | `npm run test:smoke` | The built Docker image actually boots and serves. Needs a local Docker daemon and a built image (`MIRALL_RELAY_IMAGE`). |
 
@@ -52,7 +52,8 @@ shipped documented nowhere and nobody noticed until a manual read-through.
 
 **A config option is not done until it appears in all three of:** `--help`
 (`bin/mirall-relay.js`), `deploy/mirall-relay.env.example`, and `README.md`. The guard
-parses the `SPEC` table out of `src/config.js` and fails on any option missing from them.
+drives every check from the `OPTIONS` table in `src/config.js` and fails on any option
+missing from them — including one whose `envExample` has drifted from the template.
 An option that exists but is documented nowhere is invisible — an operator cannot tune what
 they cannot find.
 
