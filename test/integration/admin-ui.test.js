@@ -234,9 +234,8 @@ function rawRequest (port, lines) {
 }
 
 test('a blank Host does not walk past the guard', async (t) => {
-  // Node answers a MISSING Host on HTTP/1.1 with 400 itself, so `Host:` with
-  // nothing after it only ever arrives from someone who chose to send it — and it
-  // used to be read as "no Host header" and waved through with the full body.
+  // Node answers a missing Host on HTTP/1.1 with 400 itself, so `Host:` with
+  // nothing after it is a distinct blank-Host case and must hit the guard.
   const { port } = await withRelay(t)
 
   const blank = await rawRequest(port, ['GET /status.json HTTP/1.1', 'Host:'])

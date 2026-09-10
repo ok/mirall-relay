@@ -247,9 +247,8 @@ export class RelayNode {
   // is a Protomux channel on that socket, and the meter releases the links from
   // the stream 'close' that follows.
   //
-  // Without this, "revoke" means "revoke whenever they next reconnect", which is
-  // not what an operator dealing with a stolen laptop means. The meter's
-  // auto-ban had the same gap.
+  // Revocation and auto-ban must take effect on live sessions, not only on the
+  // peer's next reconnect.
   destroySessionsFor (keyHex) {
     const peers = this._sessionsByKey.get(keyHex)
     if (!peers) return 0

@@ -88,7 +88,7 @@ test('an empty roster in invite mode refuses everyone', async (t) => {
 })
 
 test('open mode is unaffected', async (t) => {
-  // Regression: nothing an existing operator configured changes behaviour.
+  // Existing open-mode deployments keep their admission behavior.
   const { testnet, relay } = await inviteRelay(t, { MIRALL_RELAY_ACCESS: 'open' })
   const stranger = makeMemberNode(testnet, b4a.alloc(32, 11))
   t.after(() => stranger.destroy())

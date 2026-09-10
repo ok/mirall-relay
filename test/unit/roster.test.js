@@ -246,9 +246,8 @@ test('a failed write leaves no phantom member behind', (t) => {
     fs.chmodSync(dir, 0o700) // before the tmpdir cleanup hook needs it
   }
 
-  // Mutating doc BEFORE the write meant the next successful write committed the
-  // ghost too — and admitted it at the firewall — for an operation the caller
-  // was told had failed, and whose ticket was never handed to anybody.
+  // A failed write must not leave a phantom member in memory for a later write
+  // to commit and admit at the firewall.
   const carol = roster.add('carol')
   assert.deepEqual(roster.listPublic().map((m) => m.label), ['alice', 'carol'])
   assert.equal(roster.members.has(hexOf(alice.publicKey)), true)

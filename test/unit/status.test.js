@@ -200,7 +200,7 @@ test('access mode reports invite', async () => {
 })
 
 test('access mode still reports allowlist and open', async () => {
-  // Regression on both: an existing operator's configuration means what it did.
+  // Existing operator configuration keeps its access-mode meaning.
   assert.equal((await build().snapshot()).access.mode, 'open')
   assert.equal((await build({ MIRALL_RELAY_ALLOWLIST: 'a'.repeat(64) }).snapshot()).access.mode, 'allowlist')
 })

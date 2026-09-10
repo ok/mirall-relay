@@ -110,8 +110,7 @@ app.logger.info({
   version: VERSION,
   publicKey: app.relay.publicKeyZ32,
   admin: `http://${cfg.adminHost}:${cfg.adminPort}`,
-  // The key used to be available only from this line. It is now on a page, and
-  // saying so here is what makes anyone look.
+  // Name the page in the startup log so operators know where to copy the key.
   ...(cfg.adminUi ? { statusPage: `http://${cfg.adminHost}:${cfg.adminPort}/` } : {})
 }, 'mirall-relay started')
 

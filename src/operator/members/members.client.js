@@ -37,9 +37,8 @@ function show (id, visible) {
   el(id).hidden = !visible
 }
 
-// One message element, above the cards. It used to sit at the BOTTOM of <main>,
-// so on a relay with thirty members a duplicate-label error rendered hundreds of
-// pixels below the fold and the click looked ignored.
+// One message element, above the cards, so form failures stay visible even when
+// the roster is long.
 function say (message, tone) {
   const node = el('message')
   node.textContent = message || ''
@@ -82,9 +81,8 @@ function lock (message) {
   show('manage', false)
   show('roster', false)
   show('minted', false)
-  // CLEARED, not merely hidden. Hiding left the invite ticket and every member's
-  // name sitting in the DOM after "forget token" — readable from devtools, a
-  // find-in-page or any later script. The affordance says forget, so it forgets.
+  // Cleared, not merely hidden: forgetting the token must also remove protected
+  // labels and tickets from the DOM.
   el('minted-ticket').textContent = ''
   el('minted-label').textContent = ''
   el('member-list').textContent = ''
@@ -245,10 +243,8 @@ function start () {
       await load()
       writeToken(token)
     } catch (err) {
-      // Only a 401 explains itself. A 503 while the relay has no identity yet, a
-      // 403 from the Host guard, or a dropped connection used to land here and be
-      // discarded — the field cleared, nothing appeared, and the operator had no
-      // idea whether the token was wrong or the relay was.
+      // Only a 401 explains itself. Other failures must stay visible so an
+      // operator can distinguish a bad token from a relay or Host-guard problem.
       if (!err.handled) {
         token = ''
         fail(err.message)

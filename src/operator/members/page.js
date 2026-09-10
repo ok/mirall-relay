@@ -65,8 +65,7 @@ export function renderManagePage () {
 </header>
 
 <main>
-  <!-- Above the cards, not below them: an error from the mint form used to render
-       under a thirty-member roster, hundreds of pixels off-screen. -->
+  <!-- Above the cards so mint-form errors stay visible with a long roster. -->
   <p class="note bad" id="message" hidden></p>
 
   <section class="card" id="unlock">

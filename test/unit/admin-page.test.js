@@ -67,8 +67,8 @@ test('locking clears what it was protecting, it does not merely hide it', async 
   const { readFileSync } = await import('node:fs')
   const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   const lock = source.slice(source.indexOf('function lock ('), source.indexOf('function setPill ('))
-  // Hiding left the invite ticket and every member's name in the DOM after
-  // "forget token" — readable from devtools, find-in-page or any later script.
+  // Forgetting the token must also remove protected labels and tickets from the
+  // DOM, not only hide the panels that contain them.
   for (const id of ['minted-ticket', 'member-list', 'minted-label']) {
     assert.match(lock, new RegExp(`el\\('${id}'\\)\\.textContent = ''`), id)
   }
@@ -86,8 +86,8 @@ test('the page reveals one member at a time', async () => {
 test('the copy button is the shared one, not a second copy', async () => {
   const { readFileSync } = await import('node:fs')
   const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
-  // It was written twice and the copy immediately drifted, losing the
-  // clearTimeout guard that stops a second click's feedback being wiped.
+  // Copy feedback is centralized so repeated clicks share the same timeout
+  // guard.
   assert.match(source, /import \{ attachCopy \} from '\.\/copy-button\.js'/)
   assert.ok(!/navigator\.clipboard/.test(source), 'the clipboard call belongs to the shared module')
 })

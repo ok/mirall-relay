@@ -15,8 +15,8 @@ scrape_configs:
 #
 #   relay_reachability_probed == 0
 #     Reachability was ASSERTED with MIRALL_RELAY_ASSUME_REACHABLE, not measured,
-#     so relay_dht_firewalled is forced to 0 and can never fire. Without this
-#     alert an unreachable relay behind that flag looks perfectly healthy.
+#     so relay_dht_firewalled is forced to 0. Alert on the assertion itself,
+#     because an unreachable relay behind that flag otherwise looks healthy.
 #
 #   relay_ready == 0
 #     Not listening or not bootstrapped.

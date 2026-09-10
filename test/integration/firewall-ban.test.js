@@ -46,10 +46,9 @@ test('allowlist mode admits the listed peer and refuses everyone else', async (t
   const peer = await makeEchoPeer(testnet)
   t.after(() => peer.destroy())
 
-  // The echo peer also connects to the relay (it is the announcing side), so its
-  // key has to be listed too — a private relay is allowlisted per PEER, not per
-  // connection, and forgetting the responder is the classic way to lock a relay
-  // against itself.
+  // The echo peer also connects to the relay as the announcing side. A private
+  // relay is allowlisted per peer, not per connection, so the responder key must
+  // be listed too.
   const allowlist = [
     b4a.toString(allowed.dht.defaultKeyPair.publicKey, 'hex'),
     b4a.toString(peer.dht.defaultKeyPair.publicKey, 'hex')
@@ -95,8 +94,8 @@ test('runtime bans take effect without a restart', async (t) => {
   assert.equal(b4a.toString(await roundTrip(first, 'before')), 'echo:before')
   await waitFor(() => relay.relay.relayStats().pairings.matched >= 1, { message: 'the first pairing' })
 
-  // This is the incident-response path from the runbook: identify the key in the
-  // logs, ban it, and it is refused on its next connection.
+  // Runtime bans follow the runbook path: identify a key from logs, ban it, and
+  // refuse it on the next connection.
   relay.firewall.ban(b4a.toString(dialer.dht.defaultKeyPair.publicKey, 'hex'))
   assert.equal(relay.firewall.firewall(dialer.dht.defaultKeyPair.publicKey), true)
 
