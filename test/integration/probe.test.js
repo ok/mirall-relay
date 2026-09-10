@@ -75,3 +75,24 @@ test('the probe refuses to run without a relay key', async () => {
   assert.equal(code, 1)
   assert.match(stderr, /--relay <public-key> is required/)
 })
+
+test('the probe refuses an unknown flag and a nonsense cap', async () => {
+  const unknown = await runProbe(['--relay', 'f'.repeat(64), '--nope'])
+  assert.equal(unknown.code, 1)
+  assert.match(unknown.stderr, /unknown flag --nope/)
+
+  const bytes = await runProbe(['--relay', 'f'.repeat(64), '--bytes', 'lots'])
+  assert.equal(bytes.code, 1)
+  assert.match(bytes.stderr, /--bytes must be a positive integer/)
+
+  const timeout = await runProbe(['--relay', 'f'.repeat(64), '--timeout', '0'])
+  assert.equal(timeout.code, 1)
+  assert.match(timeout.stderr, /--timeout must be a positive number/)
+})
+
+test('--help prints usage and exits 0, spelled either way', async () => {
+  for (const flag of ['--help', '-h']) {
+    const { stdout } = await execFile('node', ['scripts/probe.js', flag], { cwd: ROOT })
+    assert.match(stdout, /node scripts\/probe\.js --relay <public-key>/)
+  }
+})
