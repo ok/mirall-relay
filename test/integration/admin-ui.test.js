@@ -184,6 +184,15 @@ test('MIRALL_RELAY_ADMIN_UI=false leaves the JSON endpoints exactly as they were
   assert.equal((await fetch(base + '/.well-known/mirall-relay.json')).status, 200)
 })
 
+test('MIRALL_RELAY_ADMIN_UI=false leaves the management page enabled', async (t) => {
+  const { base } = await withRelay(t, { MIRALL_RELAY_ADMIN_UI: 'false' })
+
+  assert.equal((await fetch(base + '/admin/', { redirect: 'manual' })).status, 200)
+  assert.equal((await fetch(base + '/admin/style.css')).status, 200)
+  assert.equal((await fetch(base + '/admin/app.js')).status, 200)
+  assert.equal((await fetch(base + '/admin/invites')).status, 401)
+})
+
 test('a loopback-bound admin server refuses a rebound Host on the browser surface', async (t) => {
   // DNS rebinding: a page on the internet points its own hostname at 127.0.0.1
   // and reads this port out of the operator's browser. The Host header still says

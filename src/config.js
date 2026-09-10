@@ -66,7 +66,7 @@ export const DEFAULTS = Object.freeze({
   adminPort: 9200,
   adminUi: true, // the browser status page; false leaves only the JSON endpoints
   // Extra Host header values accepted when the admin server is bound to loopback.
-  // See src/admin-http.js — the guard is inert on any other bind.
+  // See src/operator/http/host-guard.js — the guard is inert on any other bind.
   adminAllowedHosts: null,
   adminWrite: true, // false removes /admin/* entirely
   adminToken: null, // prefer the file: env vars leak into `docker inspect`
