@@ -3,7 +3,7 @@
 // break a real deployment if it were stricter.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { hostAllowed, guardsHost } from '../../src/admin-http.js'
+import { hostAllowed, guardsHost } from '../../src/operator/http/host-guard.js'
 
 const loopback = { adminHost: '127.0.0.1', adminAllowedHosts: null }
 
