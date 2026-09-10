@@ -166,11 +166,9 @@ test('bans can be set and cleared over the surface', async (t) => {
 test('a malformed percent-escape in the path answers rather than hanging', async (t) => {
   const relay = await inviteRelay(t)
   const auth = bearer(relay.adminToken)
-  // decodeURIComponent throws URIError on %zz; the HTTP boundary must translate
-  // it into a response so the request cannot pin its socket.
   const res = await jsonRequest(urlOf(relay, '/admin/invites/%zz'), { method: 'DELETE', headers: auth })
-  assert.equal(res.statusCode, 500)
-  assert.equal(res.json.error, 'internal error')
+  assert.equal(res.statusCode, 400)
+  assert.equal(res.json.error, 'bad-path')
 
   const listing = await jsonRequest(urlOf(relay, '/admin/invites'), { headers: auth })
   assert.equal(listing.statusCode, 200, 'and the server is still serving')
@@ -241,6 +239,7 @@ test('a non-JSON body is 400', async (t) => {
     body: 'not json'
   })
   assert.equal(res.statusCode, 400)
+  assert.equal(res.json.error, 'invalid-json')
 })
 
 test('writes to a non-admin path are still 405', async (t) => {

@@ -16,9 +16,17 @@ test('readJson treats an empty body as an empty object', async () => {
 })
 
 test('readJson rejects malformed JSON as a bad request', async () => {
-  await assert.rejects(readJson(requestFrom('not json')), { status: 400 })
+  await assert.rejects(readJson(requestFrom('not json')), {
+    status: 400,
+    code: 'invalid-json',
+    message: 'request body must be valid JSON'
+  })
 })
 
 test('readJson rejects bodies over the configured limit', async () => {
-  await assert.rejects(readJson(requestFrom('xxxxx'), { limit: 4 }), { status: 413 })
+  await assert.rejects(readJson(requestFrom('xxxxx'), { limit: 4 }), {
+    status: 413,
+    code: 'body-too-large',
+    message: 'request body too large'
+  })
 })
