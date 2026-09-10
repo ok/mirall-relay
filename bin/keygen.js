@@ -6,6 +6,7 @@
 //
 // Losing the seed means every client configured with the derived public key can
 // no longer reach you, and there is no recovery — treat it like the OTA signing key.
+import { parseLongOptions } from '../src/cli-args.js'
 import { generateSeed, keyPairFromSeed, publicKeyZ32, writeSeed } from '../src/keys.js'
 import b4a from 'b4a'
 
@@ -18,14 +19,15 @@ export function keygen ({ out = null } = {}) {
   return { seedHex, publicKey: pub, seedFile: out }
 }
 
+// --seed-file is the relay's own name for the path; --out is the ceremony's.
+const KEYGEN_SPEC = {
+  out: { value: true },
+  'seed-file': { value: true }
+}
+
 export function keygenCommand (argv = []) {
-  let out = null
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--out' || argv[i] === '--seed-file') out = argv[++i]
-    else if (argv[i].startsWith('--out=')) out = argv[i].slice(6)
-    else if (argv[i].startsWith('--seed-file=')) out = argv[i].slice(12)
-    else throw new Error(`unexpected argument ${JSON.stringify(argv[i])}`)
-  }
+  const { flags } = parseLongOptions(argv, KEYGEN_SPEC)
+  const out = flags.out ?? flags['seed-file'] ?? null
 
   const { seedHex, publicKey, seedFile } = keygen({ out })
 
