@@ -1,6 +1,7 @@
 import idEnc from 'hypercore-id-encoding'
 import { accessBlock } from '../../status.js'
 import { readJson } from './body.js'
+import { badRequest, sendAdminError } from './errors.js'
 import { hexOfKey } from './keys.js'
 import { json, notFound } from './responses.js'
 
@@ -42,12 +43,7 @@ export function createAdminRoutes ({ cfg, relay, firewall, roster, meter, logger
 
       return notFound(res)
     } catch (err) {
-      // Malformed roster data is a server fault; malformed request data is a
-      // client fault. Keep that distinction centralized at the HTTP boundary.
-      const BY_CODE = { duplicate: 409, 'not-found': 404, malformed: 500 }
-      const status = err.status || BY_CODE[err.code] || (err.code ? 400 : 500)
-      if (status >= 500) logger?.warn({ err: err.message, path }, 'admin write failed')
-      return json(res, status, { error: err.code || 'internal error', message: err.message })
+      return sendAdminError(res, err, { logger, path })
     }
   }
 }
@@ -120,7 +116,7 @@ function deleteBan ({ res, firewall, id }) {
 function banTtl (value) {
   if (value === undefined || value === null) return null
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    throw Object.assign(new Error('ttlMs must be a positive number of milliseconds'), { status: 400 })
+    throw badRequest('invalid-ttl', 'ttlMs must be a positive number of milliseconds')
   }
   return value
 }
