@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // CLI entry: parse -> start -> serve -> shut down cleanly on a signal.
-import { loadConfig } from '../src/config.js'
+import { helpOptions, loadConfig } from '../src/config.js'
 import { startRelay, stopRelay, VERSION } from '../src/index.js'
 import { keygenCommand } from './keygen.js'
 import { inviteCommand } from './invite.js'
@@ -17,48 +17,7 @@ USAGE
   mirall-relay --help
 
 OPTIONS  (every flag has a MIRALL_RELAY_* environment equivalent)
-  --seed HEX                 64-hex identity seed (overrides --seed-file)
-  --seed-file PATH           seed file, generated on first run   [./.keys/seed]
-  --seed-secret-file PATH    mounted secret, read before --seed-file
-                             [/run/secrets/relay_seed]
-  --bootstrap host:port,...  DHT bootstrap override              [mainline]
-  --host ADDR                UDP bind address                    [0.0.0.0]
-  --port N                   UDP port, 0 = ephemeral             [49737]
-  --ephemeral                do not join the DHT routing table   [false]
-  --assume-reachable         skip firewall probing (public IP)   [false]
-
-  --admin-host ADDR          admin HTTP bind                     [127.0.0.1]
-  --admin-port N             admin HTTP port                     [9200]
-  --admin-ui BOOL            serve the browser status page       [true]
-  --admin-allowed-hosts H,.. extra Host values accepted when the
-                             admin server is bound to loopback   [none]
-  --admin-write BOOL         serve the token-gated /admin/* write
-                             surface; false removes it entirely  [true]
-  --admin-token TOKEN        bearer token for /admin/*; prefer the
-                             file, env vars leak into inspect    [none]
-  --admin-token-file PATH    token file, generated and logged on
-                             first boot              [./.keys/admin-token]
-
-  --max-sessions-per-key N   sessions per peer DEVICE key        [64]
-  --max-active-links N       global bridged-stream ceiling       [2000]
-  --max-link-bytes SIZE      bytes per link, per direction       [512MB]
-  --max-link-rate SIZE       bytes/sec per link, per direction   [4MiB]
-  --max-link-ms N            max link lifetime                   [3600000]
-  --max-pending N            half-open pairing ceiling           [10000]
-  --session-rate N           new sessions per key per minute     [120]
-  --over-rate-grace-ms N     sustained-overrun window before a
-                             link is torn for exceeding its rate  [5000]
-  --meter-ms N               cap sampling interval               [1000]
-
-  --access MODE              open | invite. invite admits only roster
-                             members and --allowlist keys        [open]
-  --roster-file PATH         members.json; as secret as the seed
-                                                     [./.keys/members.json]
-  --allowlist KEY,...        static keys admitted, unioned with the roster
-  --banlist KEY,...          keys refused at connect time
-  --region NAME              label for metrics and /.well-known  [unknown]
-  --operator NAME            label for metrics and /.well-known  [unknown]
-  --log-level LEVEL          trace|debug|info|warn|error|fatal   [info]
+${helpOptions()}
 
 INVITE
   mirall-relay invite create <label>   mint an invite and print the ticket
