@@ -5,6 +5,7 @@
 // strict and fails at boot: a relay that silently starts with a nonsense cap is
 // worse than one that refuses to start.
 import idEnc from 'hypercore-id-encoding'
+import { camel, parseLongOptions } from './cli-args.js'
 
 export const ENV_PREFIX = 'MIRALL_RELAY_'
 
@@ -181,33 +182,25 @@ export function parseBootstrapEntry (entry) {
 
 // --- assembly ------------------------------------------------------------
 
-function camel (flag) {
-  return flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
-}
+// The relay's flags as a cli-args spec. Every option carries a value; a bare
+// `--flag` arrives as '' so asBool can read it as true and every other parser
+// can reject it as a missing value.
+export const CONFIG_FLAG_SPEC = Object.freeze(
+  Object.fromEntries(Object.keys(SPEC).map((flag) => [flag, { value: true }]))
+)
 
-// Minimal long-flag parser: --flag value | --flag=value | --flag (boolean true).
-// Deliberately dependency-free — the CLI surface is a handful of options and a
-// network-exposed service earns its small dependency tree.
 export function parseArgv (argv) {
-  const out = {}
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]
-    if (!arg.startsWith('--')) throw new Error(`unexpected argument ${JSON.stringify(arg)}`)
-    const eq = arg.indexOf('=')
-    const flag = eq === -1 ? arg.slice(2) : arg.slice(2, eq)
-    if (!(flag in SPEC)) throw new Error(`unknown flag --${flag}`)
-    let raw
-    if (eq !== -1) raw = arg.slice(eq + 1)
-    else if (argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) raw = argv[++i]
-    else raw = '' // bare flag -> boolean true via asBool
-    out[flag] = raw
-  }
-  return out
+  return parseLongOptions(argv, CONFIG_FLAG_SPEC, { bareBooleanValue: '' }).flags
 }
 
 export function loadConfig (argv = [], env = process.env) {
+  return configFromFlags(parseArgv(argv), env)
+}
+
+// Flags already parsed — `invite` shares this entry point because its labels are
+// positional, so it cannot hand the whole argv to parseArgv.
+export function configFromFlags (flags, env = process.env) {
   const cfg = { ...DEFAULTS }
-  const flags = parseArgv(argv)
 
   for (const [flag, [suffix, parse]] of Object.entries(SPEC)) {
     const key = camel(flag)

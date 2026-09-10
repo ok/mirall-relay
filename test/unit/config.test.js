@@ -42,6 +42,12 @@ test('parseArgv handles --flag value, --flag=value and bare booleans', () => {
 
 test('a bare non-boolean flag is an error, not a silent default', () => {
   assert.throws(() => loadConfig(['--region']), /--region requires a value/)
+  assert.throws(() => loadConfig(['--admin-port']), /--admin-port requires a value/)
+})
+
+test('the relay config surface takes flags only, and only its own', () => {
+  assert.throws(() => loadConfig(['--nope', '1']), /unknown flag --nope/)
+  assert.throws(() => loadConfig(['ben']), /unexpected argument "ben"/)
 })
 
 test('bare --ephemeral and --assume-reachable parse as true', () => {
