@@ -16,6 +16,7 @@
 import DHT from 'hyperdht'
 import Relay from 'blind-relay'
 import b4a from 'b4a'
+import { parseLongOptions } from '../src/cli-args.js'
 import { decodeKeyOrThrow, parseBootstrapEntry } from '../src/config.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -33,22 +34,23 @@ const USAGE = `probe — verify a mirall-relay deployment
 Exit codes: 0 the relay bridged real traffic - 1 it did not.
 `
 
+const PROBE_SPEC = {
+  relay: { value: true, default: null },
+  bootstrap: { value: true, default: null },
+  timeout: { value: true, parse: Number, default: DEFAULT_TIMEOUT_MS },
+  bytes: { value: true, parse: Number, default: PAYLOAD_BYTES },
+  help: { value: false, aliases: ['-h'] }
+}
+
 function parseArgs (argv) {
-  const out = { relay: null, bootstrap: null, timeout: DEFAULT_TIMEOUT_MS, bytes: PAYLOAD_BYTES, help: false }
-  for (let i = 0; i < argv.length; i++) {
-    const [flag, inline] = argv[i].includes('=') ? argv[i].split(/=(.*)/s) : [argv[i], undefined]
-    const value = inline !== undefined ? inline : argv[i + 1]
-    const step = () => { if (inline === undefined) i++ }
-    switch (flag) {
-      case '--relay': out.relay = value; step(); break
-      case '--bootstrap': out.bootstrap = value; step(); break
-      case '--timeout': out.timeout = Number(value); step(); break
-      case '--bytes': out.bytes = Number(value); step(); break
-      case '--help': case '-h': out.help = true; break
-      default: throw new Error(`unknown argument ${JSON.stringify(argv[i])}`)
-    }
-  }
-  if (!out.help && !out.relay) throw new Error('--relay <public-key> is required')
+  const { flags } = parseLongOptions(argv, PROBE_SPEC)
+  const out = { ...flags, help: !!flags.help }
+  if (out.help) return out
+  if (!out.relay) throw new Error('--relay <public-key> is required')
+  // A nonsense cap would otherwise surface as an allocation error or a probe
+  // that never times out, neither of which names the flag that caused it.
+  if (!Number.isFinite(out.timeout) || out.timeout <= 0) throw new Error('--timeout must be a positive number of milliseconds')
+  if (!Number.isInteger(out.bytes) || out.bytes < 1) throw new Error('--bytes must be a positive integer')
   return out
 }
 
