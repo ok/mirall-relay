@@ -103,6 +103,8 @@ change to the config surface, the admin port, or the key ceremony has a counterp
   incident response, rotation, upgrades, backup. The **deployment truth**.
 - `SECURITY.md` — the trust model, how to report, and what is known-and-documented rather
   than a vulnerability.
+- `.claude/coding.md` — the code style, module boundaries, naming, commenting, and
+  anti-pattern rules that keep relay cleanup from drifting back.
 - `.claude/testing.md` — the test layers, the change-type → coverage matrix, the docs-drift
   obligation, the status-page bar, and how it is all gated.
 - `.claude/lessons.md` — running log of non-obvious lessons from real debugging.
