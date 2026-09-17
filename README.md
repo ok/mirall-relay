@@ -1,4 +1,13 @@
-# mirall-relay
+<p align="center">
+  <a href="https://mirall.app">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/media/logo-dark.svg">
+      <img src="docs/media/logo-light.svg" width="240" alt="Mirall">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">Mirall Relay</h1>
 
 A **blind relay** for [Mirall](https://mirall.app). It connects two peers that
 cannot reach each other directly — office Wi-Fi, mobile hotspots, symmetric NAT,
@@ -6,7 +15,15 @@ UDP-filtered networks — without ever being able to read what they send.
 
 Anyone can run one. Start it, open `http://localhost:9200` for the public key and
 whether the world can actually reach you, then paste that key into Mirall under
-**Settings → Network**.
+**Settings → Network → Relay**.
+
+What a relay is and what its operator can see is documented once, on the website:
+[Relays, and what they can see](https://mirall.app/docs/explanation#relays), with
+[Run your own relay](https://mirall.app/docs/guides#run-your-own-relay) for the
+operator and [Connect through a relay](https://mirall.app/docs/guides#use-a-relay)
+for the person you hand a key or an invite to. If you want a relay with none of the
+membership machinery below — one key, one container — run
+[mirall-relay-lite](https://github.com/ok/mirall-relay-lite) instead.
 
 ---
 
@@ -32,7 +49,42 @@ else's. That is the point of this repository being public.
 
 ---
 
+## Quick start (StartOS)
+
+The least work, if you run [StartOS](https://start9.com). The package handles the
+container, the data volume and the operator pages for you, and it derives the identity
+on install — so the public key exists before the relay has ever started.
+
+Add the registry, then install:
+
+1. **Settings → Registries → Add registry** → `https://registry.zsapping.net`
+2. Find **Mirall Relay** in the marketplace and install it.
+3. Open **Status Page** for the public key, or **Members** to mint invites. The admin
+   token for the members page comes from the service's **Show Admin Token** action.
+
+Or sideload it: download the `.s9pk` for your architecture from the
+[package releases](https://github.com/ok/mirall-relay-startos/releases) and use
+**System → Sideload a Service**. Source and docs:
+[ok/mirall-relay-startos](https://github.com/ok/mirall-relay-startos).
+
+**A relay is only useful if the internet can reach its UDP port.** On StartOS that means
+either a router forward of **UDP 49737** to the server, or StartTunnel with a public IPv4
+address enabled. The external port has to be exactly 49737: the DHT decides whether this
+node is reachable by asking other nodes to send unsolicited packets to the port it is
+bound to, so a remapped external port can never pass that check. The package's
+**Instructions** tab walks through it.
+
+---
+
 ## Quick start (Docker)
+
+The image is published on GHCR. Every tag, digest and supported architecture is listed on its
+[container page](https://github.com/ok/mirall-relay/pkgs/container/mirall-relay) — there is
+nothing to build and no checkout needed.
+
+If the host has no Docker yet, `curl -fsSL https://get.docker.com | sh` covers most Linux
+distributions; [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) covers
+everything else.
 
 ```sh
 # 1. Generate an identity. The PUBLIC KEY is what users paste into Mirall.
@@ -375,8 +427,15 @@ nothing about the relay.
 ## Using it from Mirall
 
 Mirall reaches a relay purely by its public key — there is no host, port, token or
-account. Paste the key into **Settings → Network → Add a relay**, and use **Test**
-to confirm reachability.
+account. Under **Settings → Network → Relay**, click **Add relay**, paste the key
+(or, for a private relay, the `mirall://relay/…` invite), then **Continue** and
+**Add relay**. Mirall probes it as soon as it is stored and the row settles on
+**Reachable** or **Unreachable**; **Test** in the row's menu re-runs that.
+
+A private relay's invite pins the identity this device presents, which cannot change
+while the app is running — so Mirall shows a **Reconnect now** notice, and the relay
+reads **Unreachable** until it is taken. That is honest rather than broken: the node
+really is still presenting its old key.
 
 Relaying only engages when a direct connection cannot be made, so configuring a
 relay costs nothing on networks that work.
