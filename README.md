@@ -7,7 +7,9 @@
   </a>
 </p>
 
-<h1 align="center">Mirall Relay</h1>
+---
+
+# Mirall Relay
 
 A **blind relay** for [Mirall](https://mirall.app). It connects two peers that
 cannot reach each other directly — office Wi-Fi, mobile hotspots, symmetric NAT,
