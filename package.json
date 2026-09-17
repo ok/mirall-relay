@@ -1,6 +1,6 @@
 {
   "name": "mirall-relay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A blind relay for Mirall \u2014 bridges end-to-end-encrypted connections between peers that cannot hole-punch to each other.",
   "type": "module",
   "license": "AGPL-3.0-or-later",
