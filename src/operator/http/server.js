@@ -7,9 +7,18 @@ import { hostAllowed } from './host-guard.js'
 import { BASE_HEADERS, cached, json, methodNotAllowed, notFound } from './responses.js'
 
 export function makeAdminServer (cfg, deps) {
-  const { auth, logger } = deps
+  const { auth, logger, relay } = deps
   const adminRoute = createAdminRoutes({ cfg, ...deps })
   const publicRoute = createPublicRoutes({ cfg, ...deps })
+
+  // Only what the anonymous status page already publishes, so the members page
+  // can carry the same footer without the shell learning anything protected.
+  const site = {
+    region: cfg.region,
+    operator: cfg.operator,
+    version: relay?.version,
+    statusPage: cfg.adminUi !== false
+  }
 
   const server = http.createServer(async (req, res) => {
     const path = (req.url || '').split('?')[0]
@@ -20,7 +29,7 @@ export function makeAdminServer (cfg, deps) {
       return forbiddenHost(res, req, path, logger)
     }
 
-    if (isAdmin) return dispatchAdmin(req, res, path, { cfg, auth, logger, adminRoute })
+    if (isAdmin) return dispatchAdmin(req, res, path, { cfg, auth, logger, adminRoute, site })
     return dispatchPublic(req, res, path, { logger, publicRoute })
   })
 
@@ -38,7 +47,7 @@ function forbiddenHost (res, req, path, logger) {
   })
 }
 
-function dispatchAdmin (req, res, path, { cfg, auth, logger, adminRoute }) {
+function dispatchAdmin (req, res, path, { cfg, auth, logger, adminRoute, site }) {
   if (!cfg.adminWrite || !auth) return notFound(res)
 
   if (path === '/admin') {
@@ -46,7 +55,7 @@ function dispatchAdmin (req, res, path, { cfg, auth, logger, adminRoute }) {
     return res.end()
   }
 
-  const page = managePaths().get(path)
+  const page = managePaths(site).get(path)
   if (page) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return methodNotAllowed(res)
     return cached(req, res, page.body, page.type, page.etag)

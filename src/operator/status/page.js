@@ -14,6 +14,7 @@ import { assetPath, readAssets } from '../assets.js'
 import { encodeQr, qrSvg } from '../../qr.js'
 import { formatBytes, formatCount, formatField, formatMs, formatRate } from '../format.js'
 import { accessSignature, reachabilitySignature } from './refresh.client.js'
+import { escapeHtml, plain } from '../html.js'
 
 export { etagFor } from '../assets.js'
 
@@ -38,11 +39,7 @@ export function loadAssets () {
   return assetCache
 }
 
-export function escapeHtml (value) {
-  return String(value).replace(/[&<>"']/g, (ch) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
-  ))
-}
+export { escapeHtml }
 
 // The identity never changes while the process runs, so neither do its squares.
 // Both renderings are memoised: the inline one is ~7 KB of path data rebuilt on
@@ -149,8 +146,28 @@ function rows (entries) {
   return entries.map(([label, value]) => `<div class="row"><dt>${label}</dt><dd>${value}</dd></div>`).join('')
 }
 
-function plain (value, fallback = '—') {
-  return value === null || value === undefined || value === '' ? fallback : escapeHtml(value)
+// The four answers someone revisiting their own relay actually came for: is it
+// being used, what is it costing, who may use it, and how long has it been up.
+// Everything here is already in the snapshot, and each value keeps its data-field
+// so refresh.client.js patches it in place like any other number.
+function tiles (status, access) {
+  const out = [
+    ['traffic.linksActive', 'count', status.traffic.linksActive, 'live links'],
+    // bytesRelayed is a process counter and resets on restart, so it is never
+    // labelled as a lifetime total — this number is somebody's egress bill.
+    ['traffic.bytesRelayed', 'bytes', status.traffic.bytesRelayed, 'relayed this run']
+  ]
+
+  // On an open relay a member count is meaningless: nothing gates on it.
+  out.push(access.mode === 'invite' && access.members
+    ? ['access.members.active', 'count', access.members.active, 'members']
+    : ['traffic.sessionsAccepted', 'count', status.traffic.sessionsAccepted, 'sessions accepted'])
+
+  out.push(['uptimeSeconds', 'duration', status.uptimeSeconds, 'uptime'])
+
+  return out.map(([path, format, value, label]) =>
+    `<div class="tile"><dt class="tile-label">${label}</dt><dd class="tile-value">${field(path, format, value)}</dd></div>`
+  ).join('')
 }
 
 // Three modes, in plain language, because the page is where an operator finds
@@ -189,8 +206,15 @@ function manageHint (access) {
 function manageSentence (access) {
   const cli = 'Or run <code>mirall-relay invite create &lt;label&gt;</code>.'
   return access.managed === false
-    ? 'Add a member with <code>mirall-relay invite create &lt;label&gt;</code>, then send them the invite line. The admin page is off (<code>MIRALL_RELAY_ADMIN_WRITE=false</code>).'
-    : `Add and revoke members on the <a href="admin/">admin page</a>. ${cli}`
+    ? 'Add a member with <code>mirall-relay invite create &lt;label&gt;</code>, then send them the invite line. The members page is off (<code>MIRALL_RELAY_ADMIN_WRITE=false</code>).'
+    : `Add and revoke members on the <a href="admin/">members page</a>. ${cli}`
+}
+
+// The members page exists only under MIRALL_RELAY_ADMIN_WRITE, so the link is
+// left out rather than offered as a 404.
+function pageNav (access) {
+  const members = access.managed === false ? '' : '<a href="admin/">Members</a>'
+  return `<nav class="pages" aria-label="Pages"><a href="./" aria-current="page">Status</a>${members}</nav>`
 }
 
 function accessRows (access) {
@@ -282,12 +306,19 @@ export function renderPage (status) {
 <header class="masthead">
   <div>
     <h1>mirall-relay</h1>
-    <p class="sub">${plain(labels.region, 'no region')} · ${plain(labels.operator, 'no operator')} · v${plain(status.version)}</p>
+    ${pageNav(access)}
   </div>
   <p class="pill ${current.tone}" id="verdict-pill" data-tone="${current.tone}">${escapeHtml(current.label)}</p>
 </header>
 
 <main>
+  <section class="card hero ${current.tone}">
+    <h2 class="visually-hidden">Summary</h2>
+    <p class="hero-verdict" id="verdict-sentence-label">${escapeHtml(current.label)}</p>
+    <p class="hero-sentence" id="verdict-sentence">${escapeHtml(current.sentence)}</p>
+    <dl class="tiles">${tiles(status, access)}</dl>
+  </section>
+
   <section class="card identity">
     <h2>Relay public key</h2>
     <div class="identity-grid">${identityCard}</div>
@@ -298,7 +329,6 @@ export function renderPage (status) {
 
   <section class="card reachability">
     <h2>Reachability</h2>
-    <p class="verdict" id="verdict-sentence">${escapeHtml(current.sentence)}</p>
     ${noteList.map((note) => `<p class="note warn">${escapeHtml(note)}</p>`).join('')}
     ${steps.length ? `<ol class="steps">${steps.map((step) => `<li>${step}</li>`).join('')}</ol>` : ''}
     <dl class="facts">
@@ -366,10 +396,13 @@ export function renderPage (status) {
 </main>
 
 <footer>
-  <a href="status.json">status.json</a>
-  <a href="readyz">readyz</a>
-  <a href="metrics">metrics</a>
-  <a href=".well-known/mirall-relay.json">capability doc</a>
+  <div class="footer-links">
+    <a href="status.json">status.json</a>
+    <a href="readyz">readyz</a>
+    <a href="metrics">metrics</a>
+    <a href=".well-known/mirall-relay.json">capability doc</a>
+  </div>
+  <p class="footer-meta">${plain(labels.region, 'no region')} · ${plain(labels.operator, 'no operator')} · v${plain(status.version)}</p>
 </footer>
 
 <script type="module" src="ui.js"></script>

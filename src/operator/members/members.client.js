@@ -9,12 +9,18 @@
 // text — labels are people's names — and this page has no innerHTML anywhere, so
 // there is no escaping to get wrong. The CSP (default-src 'none') is the second
 // line, not the first.
-import { attachCopy } from './copy-button.js'
+import { copyText, selectNode } from './copy-button.js'
 
 const TOKEN_KEY = 'mirall-relay.admin-token'
+const COPY_IDLE = 'Copy invite'
+const COPY_RESET_MS = 2500
 
 const el = (id) => document.getElementById(id)
 let token = ''
+
+// At most one member's invite on screen at a time. Held here rather than in the
+// DOM because renderMembers rebuilds the whole list on every load().
+let revealed = null
 
 function readToken () {
   // Private browsing and blocked-storage modes throw on access rather than
@@ -80,14 +86,11 @@ function lock (message) {
   show('unlock', true)
   show('manage', false)
   show('roster', false)
-  show('minted', false)
+  revealed = null
   // Cleared, not merely hidden: forgetting the token must also remove protected
   // labels and tickets from the DOM.
-  el('minted-ticket').textContent = ''
-  el('minted-label').textContent = ''
   el('member-list').textContent = ''
   el('roster-summary').textContent = ''
-  el('relay-key').textContent = 'not unlocked'
   setPill('Locked', 'idle')
   say(message || '', 'bad')
 }
@@ -103,8 +106,6 @@ function setPill (text, tone) {
 function renderSummary (data) {
   const access = data.access || {}
   const members = access.members || { active: 0, total: 0 }
-
-  el('relay-key').textContent = (data.relay && data.relay.publicKey) || 'no identity yet'
 
   if (access.mode === 'invite') {
     setPill(members.active === 1 ? '1 member' : members.active + ' members', members.active ? 'good' : 'warn')
@@ -132,9 +133,79 @@ function renderSummary (data) {
     'a small number is normal, including peers handed this relay’s key by a member’s own Mirall.'
 }
 
+function revealBlock (label, ticket) {
+  const block = document.createElement('div')
+  block.className = 'member-reveal'
+
+  const key = document.createElement('code')
+  key.className = 'key'
+  key.textContent = ticket
+
+  const actions = document.createElement('div')
+  actions.className = 'key-actions'
+  const done = document.createElement('button')
+  done.type = 'button'
+  done.className = 'ghost'
+  done.textContent = 'Done'
+  done.addEventListener('click', dismissReveal)
+  actions.append(done)
+
+  const warn = document.createElement('p')
+  warn.className = 'note warn'
+  warn.textContent = 'Send this to ' + label + ' the way you would send a password. Anyone holding it is that member.'
+
+  block.append(key, actions, warn)
+  return { block, key }
+}
+
+function dismissReveal () {
+  revealed = null
+  for (const block of el('member-list').querySelectorAll('.member-reveal')) {
+    const key = block.querySelector('.key')
+    if (key) key.textContent = ''
+    block.remove()
+  }
+}
+
+// Walked rather than selected: a label is operator-supplied text and has no
+// business being spliced into a selector.
+function rowFor (label) {
+  for (const row of el('member-list').children) {
+    if (row.dataset && row.dataset.label === label) return row
+  }
+  return null
+}
+
+// A copy that worked needs no UI: the invite goes to the clipboard and the button
+// says so. The ticket is put on screen only where the Clipboard API is missing —
+// every plain-HTTP, non-localhost host, which is how a platform proxy serves this
+// page — because selecting text requires text to select.
+async function deliverTicket (label, ticket) {
+  dismissReveal()
+  const row = rowFor(label)
+  if (!row) return
+
+  const copied = await copyText(ticket, () => {
+    revealed = { label, ticket }
+    const { block, key } = revealBlock(label, ticket)
+    row.append(block)
+    block.scrollIntoView({ block: 'nearest' })
+    return key
+  })
+
+  if (copied) say('', 'bad')
+  else say('This browser has no clipboard on a plain-HTTP address. The invite is selected below — press ⌘C / Ctrl+C.', 'warn')
+
+  const button = row.querySelector('.copy-invite')
+  if (!button) return
+  button.textContent = copied ? 'Copied' : 'Selected — press ⌘C / Ctrl+C'
+  setTimeout(() => { button.textContent = COPY_IDLE }, COPY_RESET_MS)
+}
+
 function memberRow (member) {
   const row = document.createElement('div')
   row.className = 'member' + (member.revoked ? ' revoked' : '')
+  row.dataset.label = member.label
 
   const who = document.createElement('div')
   who.className = 'member-who'
@@ -157,8 +228,8 @@ function memberRow (member) {
   if (!member.revoked) {
     const reveal = document.createElement('button')
     reveal.type = 'button'
-    reveal.className = 'ghost'
-    reveal.textContent = 'Show invite'
+    reveal.className = 'ghost copy-invite'
+    reveal.textContent = COPY_IDLE
     reveal.addEventListener('click', () => revealTicket(member.label))
 
     const revoke = document.createElement('button')
@@ -174,6 +245,22 @@ function memberRow (member) {
   return row
 }
 
+// Revoked members are kept — the roster is the record of who was ever invited —
+// but they are not what the operator came here to read, so they collapse. <details>
+// rather than a toggle of our own: it works before app.js has wired anything and
+// carries its own keyboard and screen-reader behaviour.
+function revokedGroup (members) {
+  const group = document.createElement('details')
+  group.className = 'revoked-group'
+
+  const summary = document.createElement('summary')
+  summary.textContent = members.length === 1 ? '1 revoked member' : members.length + ' revoked members'
+  group.append(summary)
+
+  for (const member of members) group.append(memberRow(member))
+  return group
+}
+
 function renderMembers (members) {
   const list = el('member-list')
   list.textContent = ''
@@ -184,7 +271,34 @@ function renderMembers (members) {
     list.append(empty)
     return
   }
-  for (const member of members) list.append(memberRow(member))
+
+  const active = members.filter((member) => !member.revoked)
+  const revoked = members.filter((member) => member.revoked)
+
+  if (active.length) {
+    for (const member of active) list.append(memberRow(member))
+  } else {
+    const empty = document.createElement('p')
+    empty.className = 'empty'
+    empty.textContent = 'No active members. Create an invite above.'
+    list.append(empty)
+  }
+
+  if (revoked.length) list.append(revokedGroup(revoked))
+
+  // The rebuild above destroyed the reveal, so put it back rather than making an
+  // operator mid-copy click again.
+  if (!revealed) return
+  const row = rowFor(revealed.label)
+  if (!row) {
+    revealed = null
+    return
+  }
+  const { block, key } = revealBlock(revealed.label, revealed.ticket)
+  row.append(block)
+  // It is only ever on screen because the clipboard was unavailable, so it is
+  // only useful selected.
+  selectNode(key)
 }
 
 async function load () {
@@ -197,20 +311,13 @@ async function load () {
   say('', 'bad')
 }
 
-function showTicket (label, ticket) {
-  el('minted-label').textContent = label
-  el('minted-ticket').textContent = ticket
-  show('minted', true)
-  el('minted').scrollIntoView({ block: 'nearest' })
-}
-
 async function revealTicket (label) {
   try {
     // One member's route, not the bulk ?reveal=1: that attaches a live bearer
     // credential for every active member, so showing one person's invite would
     // pull the whole roster's secrets into this tab to discard all but one.
     const member = await api('invites/' + encodeURIComponent(label) + '?reveal=1')
-    if (member.ticket) showTicket(member.label, member.ticket)
+    if (member.ticket) await deliverTicket(member.label, member.ticket)
     else fail('No invite to show for ' + label + '.')
   } catch (err) {
     if (!err.handled) fail(err.message)
@@ -222,8 +329,7 @@ async function revokeMember (label) {
   if (!window.confirm('Revoke ' + label + '?\n\nTheir invite stops working immediately and any connection they have open is closed.')) return
   try {
     const result = await api('invites/' + encodeURIComponent(label), { method: 'DELETE' })
-    el('minted-ticket').textContent = ''
-    show('minted', false)
+    dismissReveal()
     await load()
     ok(result.sessionsClosed
       ? 'Revoked ' + label + ' and closed ' + result.sessionsClosed + ' live connection(s).'
@@ -261,23 +367,17 @@ function start () {
     const button = el('mint-button')
     button.disabled = true
     try {
+      // The POST already carries the ticket; re-fetching it with ?reveal=1 would
+      // put the same live credential on the wire twice.
       const member = await api('invites', { method: 'POST', body: JSON.stringify({ label }) })
       input.value = ''
       await load()
-      showTicket(member.label, member.ticket)
+      await deliverTicket(member.label, member.ticket)
     } catch (err) {
       if (!err.handled) fail(err.message)
     } finally {
       button.disabled = false
     }
-  })
-
-  attachCopy(el('copy-ticket'), () => el('minted-ticket'), { idle: 'Copy invite' })
-
-  el('dismiss-ticket').addEventListener('click', () => {
-    // The panel is dismissed because the operator is done with the secret in it.
-    el('minted-ticket').textContent = ''
-    show('minted', false)
   })
 
   el('lock').addEventListener('click', (event) => {
