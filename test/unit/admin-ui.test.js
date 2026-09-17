@@ -4,68 +4,56 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { loadAssets, uiPaths, escapeHtml, renderPage, publicKeyQr, standaloneQr, verdict } from '../../src/operator/status/page.js'
 
-const KEY = 'yb3dq6h9c1x8kwmp4z7ejr5tn9adg2hf6bcxsq8vw3ymp4z7ejab'
-
-function status (overrides = {}) {
-  const base = {
-    service: 'mirall-relay',
-    version: '0.1.0',
-    ready: true,
-    startedAt: new Date().toISOString(),
-    uptimeSeconds: 11520,
-    labels: { region: 'eu-fsn1', operator: 'example' },
-    identity: { publicKey: KEY, seedFrom: 'file', seedPath: '/data/seed', seedCreated: false },
-    reachability: {
-      state: 'reachable',
-      firewalled: false,
-      probed: true,
-      port: 49737,
-      bindHost: '0.0.0.0',
-      publicHost: '203.0.113.9',
-      publicPort: 49737,
-      portRandomized: false,
-      bootstrapped: true,
-      ephemeral: false,
-      ephemeralConfigured: false,
-      inRoutingTable: true,
-      dhtNodes: 128,
-      bound: { host: '0.0.0.0', port: 49737, family: 4 }
-    },
-    traffic: {
-      bytesRelayed: 1536 * 1024 * 1024,
-      linksActive: 2,
-      linksOpened: 41,
-      linksTornByCap: {},
-      linksTornByCapTotal: 0,
-      sessionsAccepted: 19,
-      sessionsRejected: {},
-      sessionsRejectedTotal: 0,
-      pairings: { requested: 20, matched: 20, cancelled: 0, pending: 0, active: 1 },
-      sessions: { accepted: 19, active: 2 }
-    },
-    caps: {
-      maxSessionsPerKey: 64,
-      maxActiveLinks: 2000,
-      maxLinkBytes: 512 * 1024 * 1024,
-      maxLinkRateBytesPerSecond: 4 * 1024 * 1024,
-      maxLinkDurationMs: 3600000
-    },
-    access: { mode: 'open', allowlisted: null, banned: 0, members: null, refusedLastHour: 0, managed: true },
-    privacy: 'This relay bridges end-to-end-encrypted streams.'
-  }
-  return {
-    ...base,
-    ...overrides,
-    reachability: { ...base.reachability, ...(overrides.reachability || {}) },
-    identity: { ...base.identity, ...(overrides.identity || {}) }
-  }
-}
+import { statusFixture as status, KEY } from '../helpers/status-fixture.js'
 
 test('the public key is in the markup, so the page works with JavaScript off', () => {
   const html = renderPage(status())
   assert.ok(html.includes(KEY), 'the key must be readable from view-source and from curl')
   assert.match(html, /Settings → Network/, 'and the page must say what to do with it')
   assert.match(html, /id="copy-key"/)
+})
+
+test('the page leads with a summary, not with setup', () => {
+  const html = renderPage(status())
+  const hero = html.indexOf('class="card hero')
+  assert.ok(hero !== -1, 'there is a hero card')
+  assert.ok(hero < html.indexOf('class="card identity"'), 'and it comes before the key card')
+
+  // The verdict is the headline: a relay that is not reachable is doing nothing.
+  assert.match(html, /class="card hero good"/)
+  assert.match(html, /<p class="hero-verdict"[^>]*>Reachable<\/p>/)
+
+  // Every tile is a live field, so the refresher patches it like any other number.
+  for (const path of ['traffic.linksActive', 'traffic.bytesRelayed', 'uptimeSeconds']) {
+    assert.match(html, new RegExp(`class="tile-value"><span data-field="${path.replace('.', '\\.')}"`))
+  }
+})
+
+test('the headline counts what the relay actually gates on', () => {
+  // An open relay gates on nothing, so a member count there would be a number
+  // that means nothing; it gets throughput instead.
+  const open = renderPage(status())
+  assert.match(open, /<dt class="tile-label">sessions accepted<\/dt>/)
+  assert.ok(!open.includes('>members<'))
+
+  const invite = renderPage(status({ access: { mode: 'invite', members: { active: 2, total: 3 }, allowlisted: 0, banned: 0, refusedLastHour: 0, managed: true } }))
+  assert.match(invite, /<dt class="tile-label">members<\/dt>/)
+  assert.match(invite, /data-field="access\.members\.active"[^>]*>2</)
+})
+
+test('the relayed total never claims to be a lifetime figure', () => {
+  // It is a process counter and resets on restart, and it is somebody's egress
+  // bill — overstating it is the worst way to be wrong on this page.
+  const html = renderPage(status())
+  assert.match(html, /<dt class="tile-label">relayed this run<\/dt>/)
+})
+
+test('the verdict is stated once, not in every card', () => {
+  const html = renderPage(status({ reachability: { state: 'firewalled', firewalled: true } }))
+  assert.equal(html.split('could not reach it').length - 1, 1, 'the sentence appears once')
+  // The reachability card keeps the detail an operator acts on.
+  assert.match(html, /class="steps"/)
+  assert.match(html, /DHT nodes known/)
 })
 
 test('the counters are in the markup too, not fetched in', () => {
@@ -303,7 +291,23 @@ test('the page does not offer an admin link that is turned off', () => {
 })
 
 test('an open relay is not told to manage members it does not gate', () => {
-  const open = renderPage(status())
-  assert.ok(!open.includes('href="admin/"'))
-  assert.ok(!open.includes('invite create'))
+  // The nav offers the members page on every relay that has one; what an open
+  // relay must not get is the advice to go there and add a member, because on an
+  // open relay an invite gates nothing.
+  const body = renderPage(status()).split('<main>')[1]
+  assert.ok(!body.includes('href="admin/"'))
+  assert.ok(!body.includes('invite create'))
+})
+
+test('the masthead carries the same two-page nav the members page does', () => {
+  const html = renderPage(status())
+  assert.match(html, /<nav class="pages"/)
+  assert.match(html, /aria-current="page">Status</)
+  assert.match(html, /<a href="admin\/">Members<\/a>/)
+
+  // Nothing about the nav may depend on JavaScript: the whole page has to be
+  // complete on first render.
+  assert.ok(!html.includes('<script>'), 'no inline script')
+  const off = renderPage(status({ access: { mode: 'open', allowlisted: null, banned: 0, members: null, refusedLastHour: 0, managed: false } }))
+  assert.ok(!off.includes('>Members<'), 'and it is not offered when there is no members page')
 })
