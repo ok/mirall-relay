@@ -15,6 +15,7 @@
 // without one — a <link> and a <script src> cannot send an Authorization header,
 // so requiring it here would mean no page could ever load to collect it.
 import { assetPath, etagFor, readAssets } from '../assets.js'
+import { plain } from '../html.js'
 
 // Independent of ui.css on purpose: MIRALL_RELAY_ADMIN_UI=false turns the
 // anonymous page off, and it must not take the only way to mint an invite with it.
@@ -33,17 +34,25 @@ let cache = null
 
 // Read on first use, not at import — same reason as the status page: a packaging step
 // that ships only src/*.js must degrade to a 404 on one route, not stop the relay.
-export function managePaths () {
+export function managePaths (site = {}) {
   if (cache) return cache
   cache = readAssets(ASSETS)
-  const html = renderManagePage()
+  const html = renderManagePage(site)
   cache.set(PAGE_PATH, { body: Buffer.from(html), type: 'text/html; charset=utf-8', etag: etagFor(html) })
   return cache
 }
 
-// Fully static. Nothing here is interpolated, so there is no escaping to get
-// wrong on the server; the client builds every dynamic node with textContent.
-export function renderManagePage () {
+// `site` carries only what the anonymous status page already publishes — region,
+// operator, version — so the two footers can match. Nothing about a member is in
+// here: those are the values this page is served without a token to protect.
+// Everything else is static, and the client builds every dynamic node with
+// textContent.
+export function renderManagePage ({ region = null, operator = null, version = null, statusPage = true } = {}) {
+  // /, /status.json and the status assets go away under MIRALL_RELAY_ADMIN_UI=false;
+  // /readyz, /metrics and the capability doc survive it. Do not link what is off.
+  const statusLink = statusPage ? '<a href="../">Status</a>' : ''
+  const statusJson = statusPage ? '<a href="../status.json">status.json</a>' : ''
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -58,8 +67,11 @@ export function renderManagePage () {
 <body>
 <header class="masthead">
   <div>
-    <h1>Members</h1>
-    <p class="sub">mirall-relay &middot; <span id="relay-key">not unlocked</span></p>
+    <h1>mirall-relay</h1>
+    <nav class="pages" aria-label="Pages">
+      ${statusLink}
+      <a href="./" aria-current="page">Members</a>
+    </nav>
   </div>
   <p class="pill idle" id="mode-pill">Locked</p>
 </header>
@@ -81,17 +93,6 @@ export function renderManagePage () {
     <p class="hint">It was written to <code>MIRALL_RELAY_ADMIN_TOKEN_FILE</code> (<code>/data/admin-token</code> in the container) and printed <strong>once</strong> to the log on the boot that created it, as <code>"adminToken"</code>. It is kept for this browser tab only and is never stored on disk here.</p>
   </section>
 
-  <section class="card" id="minted" hidden>
-    <h2>New invite</h2>
-    <p class="verdict">Send this line to <strong id="minted-label"></strong>, the way you would send a password.</p>
-    <code class="key" id="minted-ticket"></code>
-    <div class="key-actions">
-      <button type="button" id="copy-ticket">Copy invite</button>
-      <button type="button" class="ghost" id="dismiss-ticket">Done</button>
-    </div>
-    <p class="note warn">Anyone holding this line <em>is</em> that member. One per person, not one per device — every device they install Mirall on shares it. If it leaks, revoke and re-issue.</p>
-  </section>
-
   <section class="card" id="manage" hidden>
     <h2>Invite someone</h2>
     <form id="mint-form" class="stack">
@@ -102,11 +103,12 @@ export function renderManagePage () {
       <button type="submit" id="mint-button">Create invite</button>
     </form>
     <p class="hint">Your own handle for the person: letters, digits, dot, dash or underscore. It is never shown on the public status page.</p>
+    <p class="note warn">Anyone holding an invite <em>is</em> that member. One per person, not one per device — every device they install Mirall on shares it. If it leaks, revoke and re-issue.</p>
     <p class="note warn" id="mode-warning" hidden></p>
   </section>
 
   <section class="card" id="roster" hidden>
-    <h2>Roster</h2>
+    <h2>Member list</h2>
     <div id="member-list"></div>
     <p class="hint" id="roster-summary"></p>
   </section>
@@ -114,8 +116,13 @@ export function renderManagePage () {
 </main>
 
 <footer>
-  <a href="../">status page</a>
-  <a href="#" id="lock">forget token</a>
+  <div class="footer-links">
+    ${statusJson}
+    <a href="../readyz">readyz</a>
+    <a href="../metrics">metrics</a>
+    <a href="../.well-known/mirall-relay.json">capability doc</a>
+  </div>
+  <p class="footer-meta">${plain(region, 'no region')} · ${plain(operator, 'no operator')} · v${plain(version)} · <a href="#" id="lock">forget token</a></p>
 </footer>
 
 <script type="module" src="app.js"></script>

@@ -69,9 +69,70 @@ test('locking clears what it was protecting, it does not merely hide it', async 
   const lock = source.slice(source.indexOf('function lock ('), source.indexOf('function setPill ('))
   // Forgetting the token must also remove protected labels and tickets from the
   // DOM, not only hide the panels that contain them.
-  for (const id of ['minted-ticket', 'member-list', 'minted-label']) {
-    assert.match(lock, new RegExp(`el\\('${id}'\\)\\.textContent = ''`), id)
-  }
+  assert.match(lock, /el\('member-list'\)\.textContent = ''/)
+  // The revealed invite is held outside the DOM, so clearing the list is not
+  // enough on its own: it would be re-rendered on the next load.
+  assert.match(lock, /revealed = null/)
+})
+
+test('a revealed invite survives the list rebuild that follows it', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
+  const render = source.slice(source.indexOf('function renderMembers ('), source.indexOf('async function load ('))
+  // renderMembers wipes the list on every load(), and a revoke or a mint runs one
+  // while an invite is on screen. Re-applying it is what stops the operator
+  // losing a selection mid-copy.
+  assert.match(render, /list\.textContent = ''/)
+  assert.match(render, /revealBlock\(revealed\.label, revealed\.ticket\)/)
+  assert.match(render, /selectNode\(key\)/)
+})
+
+test('a copy that worked puts nothing on screen', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
+  const deliver = source.slice(source.indexOf('async function deliverTicket ('), source.indexOf('function memberRow ('))
+  // The reveal is built inside copyText's fallback, which runs only when the
+  // clipboard refused. Hoisting it out would flash a live credential on screen
+  // on every successful copy.
+  const fallback = deliver.slice(deliver.indexOf('await copyText('), deliver.indexOf('if (copied)'))
+  assert.match(fallback, /row\.append\(block\)/, 'the reveal belongs to the fallback')
+  assert.ok(!/revealed = \{/.test(deliver.slice(0, deliver.indexOf('await copyText('))), 'and nothing is revealed before the attempt')
+})
+
+test('the fallback still has something to select', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/copy-button.js', import.meta.url), 'utf8')
+  // Without a clipboard, selecting the text is the only way to get the invite
+  // off the page — so the thunk must be resolved and its node selected.
+  assert.match(source, /selectNode\(typeof onFallback === 'function' \? onFallback\(\) : onFallback\)/)
+})
+
+test('revoked members collapse instead of crowding the list', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
+  const render = source.slice(source.indexOf('function renderMembers ('), source.indexOf('async function load ('))
+
+  // Active members are the list; revoked ones are kept as the record of who was
+  // ever invited, behind a <details> the operator opens on purpose.
+  assert.match(render, /const active = members\.filter\(\(member\) => !member\.revoked\)/)
+  assert.match(render, /const revoked = members\.filter\(\(member\) => member\.revoked\)/)
+  assert.match(render, /if \(revoked\.length\) list\.append\(revokedGroup\(revoked\)\)/)
+
+  const group = source.slice(source.indexOf('function revokedGroup ('), source.indexOf('function renderMembers ('))
+  // Native <details>, so it keeps its own keyboard and screen-reader behaviour
+  // rather than a toggle of ours that has to reimplement both.
+  assert.match(group, /createElement\('details'\)/)
+  assert.match(group, /createElement\('summary'\)/)
+  assert.match(group, /'1 revoked member' : members\.length \+ ' revoked members'/)
+})
+
+test('a roster of only revoked members still says so', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
+  const render = source.slice(source.indexOf('function renderMembers ('), source.indexOf('async function load ('))
+  // Otherwise revoking the last member leaves an empty card with a disclosure
+  // under it and no hint that creating an invite is the way out.
+  assert.match(render, /No active members\. Create an invite above\./)
 })
 
 test('the page reveals one member at a time', async () => {
@@ -88,6 +149,19 @@ test('the copy button is the shared one, not a second copy', async () => {
   const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   // Copy feedback is centralized so repeated clicks share the same timeout
   // guard.
-  assert.match(source, /import \{ attachCopy \} from '\.\/copy-button\.js'/)
+  assert.match(source, /import \{ copyText, selectNode \} from '\.\/copy-button\.js'/)
   assert.ok(!/navigator\.clipboard/.test(source), 'the clipboard call belongs to the shared module')
+})
+
+test('the shell has the two-page nav and no invite slot of its own', () => {
+  const html = renderManagePage()
+  assert.match(html, /<nav class="pages"/)
+  assert.match(html, /<a href="\.\.\/">Status<\/a>/)
+  assert.match(html, /aria-current="page">Members</)
+  // The invite is revealed inside a member's row, built client-side. A slot in
+  // the shell would be one served without a bearer token.
+  assert.ok(!html.includes('id="minted"'), 'no reveal panel')
+  assert.ok(!html.includes('class="key"'), 'and no ticket slot at all')
+  assert.ok(!html.includes('id="relay-key"'), 'the public key belongs to the status page')
+  assert.match(html, /<h2>Member list<\/h2>/)
 })
