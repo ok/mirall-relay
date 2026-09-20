@@ -15,7 +15,7 @@
 // without one — a <link> and a <script src> cannot send an Authorization header,
 // so requiring it here would mean no page could ever load to collect it.
 import { assetPath, etagFor, readAssets } from '../assets.js'
-import { plain } from '../html.js'
+import { FAVICON_LINK, plain } from '../html.js'
 
 // Independent of ui.css on purpose: MIRALL_RELAY_ADMIN_UI=false turns the
 // anonymous page off, and it must not take the only way to mint an invite with it.
@@ -63,7 +63,7 @@ export function renderManagePage ({ region = null, operator = null, version = nu
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex, nofollow">
 <title>mirall-relay members</title>
-<link rel="icon" href="data:,">
+${FAVICON_LINK}
 <link rel="stylesheet" href="style.css">
 </head>
 <body>

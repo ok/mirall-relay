@@ -403,3 +403,17 @@ test('the hero headline carries the mode at the same weight as the verdict', () 
   const hero = open.slice(open.indexOf('class="card hero'), open.indexOf('class="card identity"'))
   assert.ok(!hero.includes('class="pill'), 'and the hero no longer needs a pill of its own')
 })
+
+test('both pages carry the same real icon, inline', async () => {
+  // An empty data: icon silenced the favicon request but left the tab blank.
+  const { renderManagePage } = await import('../../src/operator/members/page.js')
+  const icon = /<link rel="icon" type="image\/svg\+xml" href="(data:image\/svg\+xml,[^"]+)">/
+  const onStatus = renderPage(status()).match(icon)
+  const onMembers = renderManagePage().match(icon)
+  assert.ok(onStatus && onMembers, 'each page declares an svg icon')
+  assert.equal(onStatus[1], onMembers[1])
+  const svg = decodeURIComponent(onStatus[1].slice('data:image/svg+xml,'.length))
+  assert.match(svg, /^<svg xmlns=/)
+  assert.match(svg, /#fb9c43/, 'the brand orange')
+  assert.ok(!onStatus[1].includes('"') && !onStatus[1].includes('<'), 'safe inside a double-quoted attribute')
+})
