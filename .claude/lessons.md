@@ -44,3 +44,12 @@ startup, and read a port mismatch as "firewalled" before reading it as "misconfi
 **On Docker Desktop, `firewalled: true` and a 503 from the probe are the expected
 result.** The VM's NAT means the relay is genuinely not publicly reachable, so a local
 Docker run smoke-tests boot and serve — never reachability. Don't debug it as a failure.
+
+## Operator experience
+
+**Do not put a precondition in front of a state the relay already handles safely — label
+the state instead.** A private relay with an empty roster refuses everyone; that is
+fail-closed, correct, and also what revoking the last member produces, so it has to be
+presentable anyway. The tell is a guard whose error message explains a consequence the
+status page could simply show. Let the setting save, and say "nobody can connect yet" on the
+status page and in the platform's health check.
