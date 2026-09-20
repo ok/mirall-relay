@@ -37,7 +37,8 @@ test('a firewalled node is re-probed until a probe passes, then left alone', asy
   const timers = fakeTimers()
   const dht = fakeDht(3)
   const results = []
-  startReprobe(dht, { ...timers, onResult: (firewalled) => results.push(firewalled) })
+  const attempts = []
+  startReprobe(dht, { ...timers, onResult: (firewalled, attempt) => { results.push(firewalled); attempts.push(attempt) } })
 
   await timers.fire()
   await timers.fire()
@@ -47,6 +48,7 @@ test('a firewalled node is re-probed until a probe passes, then left alone', asy
   assert.equal(dht.probes, 3)
   assert.equal(timers.pending.length, 0, 'nothing is scheduled once it is reachable')
   assert.deepEqual(results, [true, true, false])
+  assert.deepEqual(attempts, [1, 2, 3], 'each result says which attempt it was')
 })
 
 test('the first retries come quickly, then settle on the last wait', async () => {

@@ -24,6 +24,8 @@ import { bootstrapNodes } from './config.js'
 import { resolveSeed, keyPairFromSeed, publicKeyZ32 } from './keys.js'
 import { startReprobe } from './reprobe.js'
 
+const REPROBE_LOGGED = 6
+
 // udx's socket.address() returns { host, family, port } — NOT Node's dgram shape
 // with `address`. Normalised here so the status snapshot has one contract and a
 // udx change cannot silently render "undefined:54949" on the page.
@@ -154,7 +156,9 @@ export class RelayNode {
 
     if (this.firewalled) {
       logger?.error(
-        { publicKey: this.publicKeyZ32 },
+        // The address the probe was aimed at. Not the expected one means the
+        // verdict is about the wrong network path, not about the port.
+        { publicKey: this.publicKeyZ32, publicHost: this.dht.host || null, publicPort: this.dht.port || null },
         'DHT node reports FIREWALLED — a relay must be reachable from the public internet. ' +
         'Check that the UDP port is open and forwarded; clients will not be able to reach this relay.'
       )
@@ -163,9 +167,14 @@ export class RelayNode {
     // Asserted reachability was never probed, so there is nothing to re-run.
     if (!cfg.assumeReachable) {
       this.reprobe = startReprobe(this.dht, {
-        onResult: (firewalled) => {
+        onResult: (firewalled, attempt) => {
           this.metrics?.m.dhtFirewalled.set(firewalled ? 1 : 0)
-          if (!firewalled) logger?.info({ publicKey: this.publicKeyZ32 }, 'reachability re-probe passed — the relay is now reachable')
+          // warn, not info: a relay that was red and recovered, or is still red
+          // after a retry, is what an operator reading a quiet log is looking for.
+          // Only the scheduled ramp is logged, so a closed port does not fill the log.
+          const seen = { attempt, publicHost: this.dht.host || null, publicPort: this.dht.port || null }
+          if (!firewalled) logger?.warn({ publicKey: this.publicKeyZ32, ...seen }, 'reachability re-probe passed — the relay is now reachable')
+          else if (attempt <= REPROBE_LOGGED) logger?.warn(seen, 'reachability re-probe failed — still firewalled')
         },
         onUnsupported: () => logger?.warn('this dht-rpc has no re-probe hook — a firewalled verdict will stand until restart')
       })

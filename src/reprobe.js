@@ -36,7 +36,7 @@ export function startReprobe (dht, {
       await dht._updateNetworkState()
     } catch { /* a failed probe is just another firewalled result */ }
     if (stopped) return
-    onResult?.(!!dht.firewalled)
+    onResult?.(!!dht.firewalled, attempt)
     schedule()
   }
 
