@@ -9,26 +9,25 @@
 // _updateNetworkState is dht-rpc internals: the same call its own tick makes,
 // minus the same-host guard. Everything about it is optional, so a dht-rpc that
 // drops it costs the self-heal and nothing else.
-const INTERVAL_MS = 60_000
-const MAX_INTERVAL_MS = 15 * 60_000
+// Front-loaded: a port that is open answers within seconds, so the first retries
+// come quickly and only a port that really is closed settles into the last wait.
+const SCHEDULE_MS = [10_000, 20_000, 30_000, 60_000, 120_000, 300_000]
 
 export function startReprobe (dht, {
   onResult = null,
   onUnsupported = null,
-  intervalMs = INTERVAL_MS,
-  maxIntervalMs = MAX_INTERVAL_MS,
+  scheduleMs = SCHEDULE_MS,
   setTimer = setTimeout,
   clearTimer = clearTimeout
 } = {}) {
   let timer = null
   let stopped = false
-  let wait = intervalMs
+  let attempt = 0
 
   function schedule () {
     if (stopped || !dht.firewalled) return
-    timer = setTimer(probe, wait)
+    timer = setTimer(probe, scheduleMs[Math.min(attempt++, scheduleMs.length - 1)])
     timer.unref?.()
-    wait = Math.min(wait * 2, maxIntervalMs)
   }
 
   async function probe () {
