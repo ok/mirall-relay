@@ -296,3 +296,14 @@ test('minting the first member moves the served pill off "no members"', async (t
   const out = await request(urlOf(relay, '/'))
   assert.match(out.body, /Private relay · 1 member</)
 })
+
+test('the tab icon is served beside each page, as a PNG', async (t) => {
+  const relay = await withHttpRelay(t)
+  for (const path of ['/icon.png', '/admin/icon.png']) {
+    const res = await fetch(urlOf(relay, path))
+    assert.equal(res.status, 200, path)
+    assert.equal(res.headers.get('content-type'), 'image/png')
+    const body = Buffer.from(await res.arrayBuffer())
+    assert.deepEqual([...body.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'the bytes survive the trip, unmangled')
+  }
+})

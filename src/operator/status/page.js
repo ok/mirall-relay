@@ -23,7 +23,8 @@ const ASSETS = {
   '/ui.css': [assetPath('status', 'status.css'), 'text/css; charset=utf-8'],
   '/ui.js': [assetPath('status', 'refresh.client.js'), 'text/javascript; charset=utf-8'],
   '/format.js': [assetPath('format.js'), 'text/javascript; charset=utf-8'],
-  '/copy-button.js': [assetPath('copy-button.js'), 'text/javascript; charset=utf-8']
+  '/copy-button.js': [assetPath('copy-button.js'), 'text/javascript; charset=utf-8'],
+  '/icon.png': [assetPath('icon.png'), 'image/png']
 }
 
 // Every path the browser surface owns — the set the Host guard covers, and the

@@ -106,7 +106,7 @@ test('the image starts, serves /healthz and derives the expected identity', { sk
   const page = await (await fetch(`http://127.0.0.1:${ADMIN_PORT}/`)).text()
   assert.ok(page.includes(expected), 'the key the image derived must be on the page')
   assert.match(page, /Settings → Network/)
-  for (const asset of ['ui.css', 'ui.js', 'format.js', 'copy-button.js']) {
+  for (const asset of ['ui.css', 'ui.js', 'format.js', 'copy-button.js', 'icon.png']) {
     const res = await fetch(`http://127.0.0.1:${ADMIN_PORT}/${asset}`)
     assert.equal(res.status, 200, `${asset} must be in the image`)
   }
