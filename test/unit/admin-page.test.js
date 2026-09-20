@@ -177,8 +177,9 @@ test('the members page takes its mode wording from the shared module, not its ow
 
 test('the mode notice sits above the mint form and starts hidden', () => {
   const html = renderManagePage()
-  assert.match(html, /<p class="note warn" id="mode-notice" hidden><\/p>/)
+  assert.match(html, /<p class="hint" id="mode-notice" hidden><\/p>/)
   assert.ok(html.indexOf('id="mode-notice"') < html.indexOf('id="mint-form"'))
+  assert.ok(html.indexOf('id="manage"') < html.indexOf('id="mode-notice"'), 'it is part of the invite card, not a banner above it')
   assert.ok(!html.includes('id="mode-warning"'))
 })
 
@@ -187,4 +188,30 @@ test('locking hides the mode notice with everything else', async () => {
   const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
   const lock = source.slice(source.indexOf('function lock ('), source.indexOf('function setPill ('))
   assert.match(lock, /mode-notice/)
+})
+
+test('nothing on the members page is dressed as a warning', () => {
+  // The bearer-credential advice and the mode notice are guidance, not alarms;
+  // only the error line may be toned.
+  const html = renderManagePage()
+  assert.ok(!html.includes('note warn'))
+  assert.match(html, /Anyone holding an invite <em>is<\/em> that member/)
+})
+
+test('the header has the same two pills as the status page', () => {
+  const html = renderManagePage()
+  const head = html.slice(html.indexOf('<header'), html.indexOf('</header>'))
+  assert.match(head, /<div class="pills">/)
+  assert.match(head, /id="reach-pill"[^>]* hidden>/, 'empty until the status snapshot answers')
+  assert.match(head, /id="mode-pill"/)
+  assert.ok(head.indexOf('id="reach-pill"') < head.indexOf('id="mode-pill"'))
+})
+
+test('the members page reads the public snapshot for its pills, and copes without it', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
+  assert.match(source, /fetch\('\.\.\/status\.json'/)
+  assert.match(source, /reachabilityPill/)
+  const fn = source.slice(source.indexOf('async function loadPublicStatus ('), source.indexOf('function revealBlock ('))
+  assert.match(fn, /catch/, 'MIRALL_RELAY_ADMIN_UI=false turns the snapshot off, and the page must still work')
 })

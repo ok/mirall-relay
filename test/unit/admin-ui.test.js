@@ -382,3 +382,24 @@ test('the mode row carries the operator word beside the config value', () => {
   assert.match(renderPage(status()), /Public <span class="muted">\(open\)<\/span>/)
   assert.match(renderPage(status({ access: INVITE(1) })), /Private <span class="muted">\(invite\)<\/span>/)
 })
+
+test('the header states reachability and mode together, as the members page does', () => {
+  const html = renderPage(status({ access: INVITE(2) }))
+  const head = html.slice(html.indexOf('<header'), html.indexOf('</header>'))
+  assert.match(head, /<div class="pills">/)
+  assert.match(head, /id="verdict-pill"[^>]*>Reachable</)
+  assert.match(head, /id="mode-pill">Private relay · 2 members</)
+  assert.ok(head.indexOf('id="verdict-pill"') < head.indexOf('id="mode-pill"'))
+})
+
+test('the hero headline carries the mode at the same weight as the verdict', () => {
+  // The mode used to be a small pill under the sentence, and was easy to miss.
+  const open = renderPage(status())
+  assert.match(open, /<div class="hero-head">\s*<p class="hero-verdict"[^>]*>Reachable<\/p>\s*<p class="hero-mode idle">Public relay<\/p>/)
+  const members = renderPage(status({ access: INVITE(3) }))
+  assert.match(members, /<p class="hero-mode good">Private relay<\/p>/, 'the count has its own tile')
+  const empty = renderPage(status({ access: INVITE(0) }))
+  assert.match(empty, /<p class="hero-mode warn">Private relay · no members<\/p>/)
+  const hero = open.slice(open.indexOf('class="card hero'), open.indexOf('class="card identity"'))
+  assert.ok(!hero.includes('class="pill'), 'and the hero no longer needs a pill of its own')
+})

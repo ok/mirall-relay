@@ -85,6 +85,8 @@ a { color: inherit; text-underline-offset: 2px; }
 .pages a:hover { color: var(--ink); }
 .pages a[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
 
+.pills { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
 .pill {
   font-size: 0.78rem;
   font-weight: 600;
@@ -124,12 +126,17 @@ main { display: flex; flex-direction: column; gap: 1rem; }
 .hero.bad { border-left-color: var(--bad); }
 .hero.idle { border-left-color: var(--idle); }
 
-.hero-verdict {
+.hero-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.9rem; }
+
+.hero-verdict,
+.hero-mode {
   font-size: clamp(1.5rem, 5vw, 2.1rem);
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1.15;
 }
+.hero-mode { color: var(--ink); }
+.hero-mode.warn { color: var(--warn); }
 .hero.good .hero-verdict { color: var(--good); }
 .hero.warn .hero-verdict { color: var(--warn); }
 .hero.bad .hero-verdict { color: var(--bad); }
@@ -142,7 +149,6 @@ main { display: flex; flex-direction: column; gap: 1rem; }
   max-width: 54ch;
 }
 
-.hero-mode { margin-top: 0.7rem; }
 .identity .verdict { margin-bottom: 0.8rem; }
 .identity .verdict + .hint { margin-bottom: 0.8rem; }
 
