@@ -99,7 +99,12 @@ function lifecycle (server, cfg, logger) {
       })
     },
     close () {
-      return new Promise((resolve) => server.close(resolve))
+      return new Promise((resolve) => {
+        server.close(resolve)
+        // close() alone waits for every open socket, and one that connected but
+        // never sent a request is not "idle" to Node, so it waits forever.
+        server.closeAllConnections()
+      })
     }
   }
 }

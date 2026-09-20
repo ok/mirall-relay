@@ -1,6 +1,7 @@
 // The operator surface, exercised over real HTTP against a running relay.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import net from 'node:net'
 import idEnc from 'hypercore-id-encoding'
 import b4a from 'b4a'
 import { createTestnet, startTestRelay, relayedPair, waitFor } from '../helpers/make-relay.js'
@@ -127,4 +128,23 @@ test('a relay that probes for itself reports probed on both surfaces', async (t)
 
   assert.equal((await jsonRequest(urlOf(relay, '/readyz'))).json.probed, true)
   assert.match((await request(urlOf(relay, '/metrics'))).body, /relay_reachability_probed 1/)
+})
+
+test('a connection that never sent a request does not hold up shutdown', async (t) => {
+  // Browsers and proxies open speculative sockets and leave them silent. One of
+  // those kept server.close() waiting until the shutdown timer fired, so every
+  // stop exited 1 after 15 seconds.
+  const relay = await withHttpRelay(t)
+  const socket = net.connect(relay.port, '127.0.0.1')
+  socket.on('error', () => {})
+  t.after(() => socket.destroy())
+  const server = relay.admin.server
+  await waitFor(() => new Promise((resolve) => server.getConnections((_, count) => resolve(count === 1))))
+
+  // Raced against a timer so the failure is an assertion, not a hung suite.
+  const stopped = await Promise.race([
+    relay.stop().then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5000))
+  ])
+  assert.ok(stopped, 'stop must not wait for the silent socket')
 })
