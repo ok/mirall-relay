@@ -41,6 +41,13 @@ port.** The startup log therefore reads as though `--port` was ignored, which se
 debugging down the wrong path entirely. Log the *configured* UDP port explicitly at
 startup, and read a port mismatch as "firewalled" before reading it as "misconfigured".
 
+**dht-rpc probes reachability once, and never again while the public host is unchanged.**
+Its periodic re-check is guarded by `_lastHost === _nat.host` ("do not recheck the same
+network"), and the probe needs 3 of 5 ping-backs, so one unlucky round at startup left a
+correctly forwarded relay firewalled for hours. The tell: firewalled from the first seconds
+of a run, settings untouched, and a plain restart fixes it. `src/reprobe.js` re-runs
+`_updateNetworkState()` while firewalled; re-check that hook on any hyperdht bump.
+
 **On Docker Desktop, `firewalled: true` and a 503 from the probe are the expected
 result.** The VM's NAT means the relay is genuinely not publicly reachable, so a local
 Docker run smoke-tests boot and serve — never reachability. Don't debug it as a failure.
