@@ -49,12 +49,20 @@ test('a firewalled node is re-probed until a probe passes, then left alone', asy
   assert.deepEqual(results, [true, true, false])
 })
 
-test('the wait doubles up to a ceiling, so a truly closed port is not hammered', async () => {
+test('the first retries come quickly, then settle on the last wait', async () => {
+  // An open port answers within seconds, so waiting a minute for the first retry
+  // is a minute of red for nothing; a closed one must still not be hammered.
   const timers = fakeTimers()
-  startReprobe(fakeDht(Infinity), { ...timers, intervalMs: 1000, maxIntervalMs: 5000 })
+  startReprobe(fakeDht(Infinity), timers)
   const waits = []
-  for (let i = 0; i < 5; i++) waits.push(await timers.fire())
-  assert.deepEqual(waits, [1000, 2000, 4000, 5000, 5000])
+  for (let i = 0; i < 8; i++) waits.push(await timers.fire())
+  assert.deepEqual(waits, [10_000, 20_000, 30_000, 60_000, 120_000, 300_000, 300_000, 300_000])
+})
+
+test('the schedule can be replaced', async () => {
+  const timers = fakeTimers()
+  startReprobe(fakeDht(Infinity), { ...timers, scheduleMs: [5, 7] })
+  assert.deepEqual([await timers.fire(), await timers.fire(), await timers.fire()], [5, 7, 7])
 })
 
 test('a probe that throws does not end the retries', async () => {

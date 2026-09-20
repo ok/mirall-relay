@@ -83,9 +83,9 @@ The verdict can also simply be wrong for a while. HyperDHT probes reachability o
 at startup — it needs 3 of 5 remote nodes to ping the port back — and on its own
 never probes again while the public address is unchanged, so one lost round used to
 leave a correctly forwarded relay firewalled until the next restart. The relay now
-re-runs the probe itself while firewalled: after 1 minute, then backing off to every
-15. A relay that flips to reachable minutes after a restart, with
-`reachability re-probe passed` in the log, was that case. It does not apply under
+re-runs the probe itself while firewalled: after 10, 20 and 30 seconds, then 1, 2
+and 5 minutes, then every 5 minutes. A relay that flips to reachable shortly after
+a restart, with `reachability re-probe passed` in the log, was that case. It does not apply under
 `MIRALL_RELAY_ASSUME_REACHABLE`, where nothing was probed to begin with.
 
 Two states the page separates that `/readyz` does not:
