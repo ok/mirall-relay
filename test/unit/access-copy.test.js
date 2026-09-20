@@ -2,7 +2,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { modePill, modeWord, rosterNotice } from '../../src/operator/access-copy.js'
+import { modePill, modeWord, reachabilityPill, rosterNotice } from '../../src/operator/access-copy.js'
 
 const invite = (active, total = active) => ({ mode: 'invite', members: { active, total }, allowlisted: active })
 
@@ -57,4 +57,17 @@ test('an allowlist relay is NOT told invites already work', () => {
 test('the module is DOM-free, so the server can import it', () => {
   const source = readFileSync(new URL('../../src/operator/access-copy.js', import.meta.url), 'utf8')
   assert.ok(!/\bdocument\b|\bwindow\b/.test(source))
+})
+
+test('each reachability state gets its own pill, shared by both pages', () => {
+  assert.deepEqual(reachabilityPill({ state: 'reachable', probed: true }), { key: 'reachable', text: 'Reachable', tone: 'good' })
+  assert.deepEqual(reachabilityPill({ state: 'firewalled', probed: true }), { key: 'firewalled', text: 'Not reachable', tone: 'bad' })
+  assert.equal(reachabilityPill({ state: 'starting' }).text, 'Starting')
+  assert.equal(reachabilityPill({ state: 'stopped' }).text, 'Stopped')
+  assert.equal(reachabilityPill({ state: 'something-new' }).key, 'unknown')
+  assert.equal(reachabilityPill(undefined).key, 'unknown')
+})
+
+test('asserted reachability is never given the measured pill', () => {
+  assert.deepEqual(reachabilityPill({ state: 'reachable', probed: false }), { key: 'assumed', text: 'Assumed reachable', tone: 'warn' })
 })

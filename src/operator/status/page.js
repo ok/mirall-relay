@@ -14,7 +14,7 @@ import { assetPath, readAssets } from '../assets.js'
 import { encodeQr, qrSvg } from '../../qr.js'
 import { formatBytes, formatCount, formatField, formatMs, formatRate } from '../format.js'
 import { accessSignature, reachabilitySignature } from './refresh.client.js'
-import { modePill, modeWord } from '../access-copy.js'
+import { modePill, modeWord, reachabilityPill } from '../access-copy.js'
 import { escapeHtml, plain } from '../html.js'
 
 export { etagFor } from '../assets.js'
@@ -70,43 +70,18 @@ export function standaloneQr (publicKey) {
   return squaresFor(publicKey).standalone
 }
 
-const VERDICTS = {
-  reachable: {
-    label: 'Reachable',
-    tone: 'good',
-    sentence: 'Peers on the open internet can hole-punch to this relay.'
-  },
-  assumed: {
-    label: 'Assumed reachable',
-    tone: 'warn',
-    sentence: 'MIRALL_RELAY_ASSUME_REACHABLE is set, so reachability was asserted rather than measured. Confirm it from another machine before publishing the key.'
-  },
-  firewalled: {
-    label: 'Not reachable',
-    tone: 'bad',
-    sentence: 'HyperDHT probed this node from the outside and could not reach it. Clients cannot use this relay until the UDP port is open.'
-  },
-  starting: {
-    label: 'Starting',
-    tone: 'idle',
-    sentence: 'Still bootstrapping onto the DHT.'
-  },
-  stopped: {
-    label: 'Stopped',
-    tone: 'idle',
-    sentence: 'The relay is shutting down. In-flight relayed connections are dropping.'
-  },
-  unknown: {
-    label: 'Unknown',
-    tone: 'idle',
-    sentence: 'The DHT node has not reported a reachability verdict yet.'
-  }
+const SENTENCES = {
+  reachable: 'Peers on the open internet can hole-punch to this relay.',
+  assumed: 'MIRALL_RELAY_ASSUME_REACHABLE is set, so reachability was asserted rather than measured. Confirm it from another machine before publishing the key.',
+  firewalled: 'HyperDHT probed this node from the outside and could not reach it. Clients cannot use this relay until the UDP port is open.',
+  starting: 'Still bootstrapping onto the DHT.',
+  stopped: 'The relay is shutting down. In-flight relayed connections are dropping.',
+  unknown: 'The DHT node has not reported a reachability verdict yet.'
 }
 
 export function verdict (reachability) {
-  const { state, probed } = reachability
-  if (state === 'reachable' && probed === false) return VERDICTS.assumed
-  return VERDICTS[state] || VERDICTS.unknown
+  const pill = reachabilityPill(reachability)
+  return { label: pill.text, tone: pill.tone, sentence: SENTENCES[pill.key] }
 }
 
 function notes (reachability) {
@@ -276,6 +251,12 @@ function identityHint (access) {
   return '<p class="hint">Paste this into Mirall under <strong>Settings → Network → Add a relay</strong>. It is the only thing a client needs — there is no host, port, token or account.</p>'
 }
 
+// The headline names the mode only. The member count has its own tile, so it is
+// repeated here just for the one case that changes what the relay does.
+function heroMode (access, mode) {
+  return mode.tone === 'warn' ? mode.text : `${modeWord(access)} relay`
+}
+
 export function renderPage (status) {
   const { identity, reachability, traffic, caps, access, labels } = status
   const key = identity.publicKey
@@ -338,15 +319,20 @@ export function renderPage (status) {
     <h1>mirall-relay</h1>
     ${pageNav(access)}
   </div>
-  <p class="pill ${current.tone}" id="verdict-pill" data-tone="${current.tone}">${escapeHtml(current.label)}</p>
+  <div class="pills">
+    <p class="pill ${current.tone}" id="verdict-pill" data-tone="${current.tone}">${escapeHtml(current.label)}</p>
+    <p class="pill ${mode.tone}" id="mode-pill">${escapeHtml(mode.text)}</p>
+  </div>
 </header>
 
 <main>
   <section class="card hero ${current.tone}">
     <h2 class="visually-hidden">Summary</h2>
-    <p class="hero-verdict" id="verdict-sentence-label">${escapeHtml(current.label)}</p>
+    <div class="hero-head">
+      <p class="hero-verdict" id="verdict-sentence-label">${escapeHtml(current.label)}</p>
+      <p class="hero-mode ${mode.tone}">${escapeHtml(heroMode(access, mode))}</p>
+    </div>
     <p class="hero-sentence" id="verdict-sentence">${escapeHtml(current.sentence)}</p>
-    <p class="hero-mode"><span class="pill ${mode.tone}" id="mode-pill">${escapeHtml(mode.text)}</span></p>
     <dl class="tiles">${tiles(status, access)}</dl>
   </section>
 

@@ -75,7 +75,10 @@ export function renderManagePage ({ region = null, operator = null, version = nu
       <a href="./" aria-current="page">Members</a>
     </nav>
   </div>
-  <p class="pill idle" id="mode-pill">Locked</p>
+  <div class="pills">
+    <p class="pill idle" id="reach-pill" hidden></p>
+    <p class="pill idle" id="mode-pill">Locked</p>
+  </div>
 </header>
 
 <main>
@@ -95,10 +98,9 @@ export function renderManagePage ({ region = null, operator = null, version = nu
     <p class="hint">It was written to <code>MIRALL_RELAY_ADMIN_TOKEN_FILE</code> (<code>/data/admin-token</code> in the container) and printed <strong>once</strong> to the log on the boot that created it, as <code>"adminToken"</code>. It is kept for this browser tab only and is never stored on disk here.</p>
   </section>
 
-  <p class="note warn" id="mode-notice" hidden></p>
-
   <section class="card" id="manage" hidden>
     <h2>Invite someone</h2>
+    <p class="hint" id="mode-notice" hidden></p>
     <form id="mint-form" class="stack">
       <label class="field">
         <span>Label</span>
@@ -107,7 +109,7 @@ export function renderManagePage ({ region = null, operator = null, version = nu
       <button type="submit" id="mint-button">Create invite</button>
     </form>
     <p class="hint">Your own handle for the person: letters, digits, dot, dash or underscore. It is never shown on the public status page.</p>
-    <p class="note warn">Anyone holding an invite <em>is</em> that member. One per person, not one per device — every device they install Mirall on shares it. If it leaks, revoke and re-issue.</p>
+    <p class="hint">Anyone holding an invite <em>is</em> that member. One per person, not one per device — every device they install Mirall on shares it. If it leaks, revoke and re-issue.</p>
   </section>
 
   <section class="card" id="roster" hidden>

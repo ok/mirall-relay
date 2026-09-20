@@ -1,7 +1,24 @@
-// How both operator pages name the access mode. The status page renders this on
-// the server and the members page in the browser, so it lives in one place.
+// How both operator pages name the access mode and the reachability verdict. The
+// status page renders these on the server and the members page in the browser,
+// so they live in one place.
 function count (n, one, many) {
   return n === 1 ? `1 ${one}` : `${n} ${many}`
+}
+
+const REACHABILITY = {
+  reachable: { text: 'Reachable', tone: 'good' },
+  assumed: { text: 'Assumed reachable', tone: 'warn' },
+  firewalled: { text: 'Not reachable', tone: 'bad' },
+  starting: { text: 'Starting', tone: 'idle' },
+  stopped: { text: 'Stopped', tone: 'idle' },
+  unknown: { text: 'Unknown', tone: 'idle' }
+}
+
+export function reachabilityPill (reachability) {
+  const { state, probed } = reachability || {}
+  // Asserted is never shown as measured: ASSUME_REACHABLE forces the verdict.
+  const key = state === 'reachable' && probed === false ? 'assumed' : (REACHABILITY[state] ? state : 'unknown')
+  return { key, ...REACHABILITY[key] }
 }
 
 export function modeWord (access) {

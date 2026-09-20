@@ -10,7 +10,7 @@
 // there is no escaping to get wrong. The CSP (default-src 'none') is the second
 // line, not the first.
 import { copyText, selectNode } from './copy-button.js'
-import { modePill, rosterNotice } from './access-copy.js'
+import { modePill, reachabilityPill, rosterNotice } from './access-copy.js'
 
 const TOKEN_KEY = 'mirall-relay.admin-token'
 const COPY_IDLE = 'Copy invite'
@@ -93,14 +93,24 @@ function lock (message) {
   // labels and tickets from the DOM.
   el('member-list').textContent = ''
   el('roster-summary').textContent = ''
-  setPill('Locked', 'idle')
+  showPublicMode()
   say(message || '', 'bad')
 }
 
-function setPill (text, tone) {
-  const pill = el('mode-pill')
+function setPill (text, tone, id = 'mode-pill') {
+  const pill = el(id)
   pill.textContent = text
   pill.className = 'pill ' + tone
+}
+
+// The anonymous snapshot already says which mode the relay is in and whether it
+// is reachable, so the header matches the status page before any token is given.
+let publicAccess = null
+
+function showPublicMode () {
+  if (!publicAccess) return setPill('Locked', 'idle')
+  const pill = modePill(publicAccess)
+  setPill(pill.text, pill.tone)
 }
 
 // The access block mirrors what the anonymous page shows, so an operator who
@@ -123,6 +133,19 @@ function renderSummary (data) {
     members.active + ' of ' + members.total + ' active. ' +
     refused + (refused === 1 ? ' connection attempt' : ' connection attempts') + ' refused in the last hour — ' +
     'a small number is normal, including peers handed this relay’s key by a member’s own Mirall.'
+}
+
+async function loadPublicStatus () {
+  try {
+    const res = await fetch('../status.json', { headers: { accept: 'application/json' }, cache: 'no-store' })
+    if (!res.ok) return
+    const status = await res.json()
+    const reach = reachabilityPill(status.reachability)
+    setPill(reach.text, reach.tone, 'reach-pill')
+    show('reach-pill', true)
+    publicAccess = status.access || null
+    if (!token) showPublicMode()
+  } catch { /* the snapshot is off or unreachable; the page works without it */ }
 }
 
 function revealBlock (label, ticket) {
@@ -332,6 +355,8 @@ async function revokeMember (label) {
 }
 
 function start () {
+  loadPublicStatus()
+
   el('unlock-form').addEventListener('submit', async (event) => {
     event.preventDefault()
     token = el('token-input').value.trim()
