@@ -216,13 +216,19 @@ A relay is in one of two modes, set explicitly with `MIRALL_RELAY_ACCESS`:
 
 | Mode | Who may connect |
 |---|---|
-| `open` (default) | Anyone holding the public key. `BANLIST` and the caps are your only limits. |
-| `invite` | Only people you have minted an invite for, plus any static `ALLOWLIST` keys. |
+| `open` (default) | A **public** relay: anyone holding the public key. `BANLIST` and the caps are your only limits. |
+| `invite` | A **private** relay: only people you have minted an invite for, plus any static `ALLOWLIST` keys. |
 
 The mode is explicit on purpose. Emptiness used to mean "open", which under a
 roster you can edit is a hazard: revoking your last member would silently reopen
 the relay to the internet. In `invite` mode an **empty roster admits nobody**, and
 the status page says so in those words.
+
+Members can be added before or after the switch. An invite connects on a public
+relay too, so if people already use yours, hand out invites first and going
+private disconnects nobody. Starting fresh, switch first if you like: the relay
+lets nobody in until the first member exists. The one combination that does not
+admit members is `open` with an `ALLOWLIST` — that admits exactly the listed keys.
 
 #### Running a private relay
 
@@ -374,6 +380,11 @@ the key to publish, whether peers can actually reach you, where the seed is bein
 read from, and how many bytes you have paid for. It is server-rendered, so it works
 with JavaScript disabled and `curl -s localhost:9200/ | grep` still finds the key;
 with JavaScript it refreshes the counters every five seconds.
+
+The page follows the access mode. A public relay offers the key and its QR to
+share. A private relay says the key alone will not get anyone in, points at the
+members page instead, and stops offering the QR — a scanned key there produces
+a refused handshake, which a client cannot tell from an offline relay.
 
 The page is **read-only and unauthenticated**, like the rest of the admin port. It
 carries nothing secret — the seed is never rendered, only the path it is read from.

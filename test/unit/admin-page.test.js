@@ -33,7 +33,7 @@ test('its asset URLs are document-relative, so a proxy prefix works', () => {
 
 test('every route the page needs is served', () => {
   const assets = managePaths()
-  for (const path of [PAGE_PATH, '/admin/style.css', '/admin/app.js', '/admin/copy-button.js']) {
+  for (const path of [PAGE_PATH, '/admin/style.css', '/admin/app.js', '/admin/copy-button.js', '/admin/access-copy.js']) {
     const asset = assets.get(path)
     assert.ok(asset, `${path} must be served`)
     assert.ok(asset.body.length > 0)
@@ -42,6 +42,7 @@ test('every route the page needs is served', () => {
   assert.match(assets.get(PAGE_PATH).type, /text\/html/)
   assert.match(assets.get('/admin/style.css').type, /text\/css/)
   assert.match(assets.get('/admin/app.js').type, /javascript/)
+  assert.match(assets.get('/admin/access-copy.js').type, /javascript/)
 })
 
 test('the client script never uses innerHTML', async () => {
@@ -164,4 +165,26 @@ test('the shell has the two-page nav and no invite slot of its own', () => {
   assert.ok(!html.includes('class="key"'), 'and no ticket slot at all')
   assert.ok(!html.includes('id="relay-key"'), 'the public key belongs to the status page')
   assert.match(html, /<h2>Member list<\/h2>/)
+})
+
+test('the members page takes its mode wording from the shared module, not its own copy', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
+  assert.match(source, /from '\.\/access-copy\.js'/)
+  assert.ok(!source.includes('Open relay'), 'the old pill text is gone')
+  assert.ok(!source.includes('invites are recorded but do not gate'), 'and so is the old warning')
+})
+
+test('the mode notice sits above the mint form and starts hidden', () => {
+  const html = renderManagePage()
+  assert.match(html, /<p class="note warn" id="mode-notice" hidden><\/p>/)
+  assert.ok(html.indexOf('id="mode-notice"') < html.indexOf('id="mint-form"'))
+  assert.ok(!html.includes('id="mode-warning"'))
+})
+
+test('locking hides the mode notice with everything else', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('../../src/operator/members/members.client.js', import.meta.url), 'utf8')
+  const lock = source.slice(source.indexOf('function lock ('), source.indexOf('function setPill ('))
+  assert.match(lock, /mode-notice/)
 })

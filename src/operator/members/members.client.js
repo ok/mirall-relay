@@ -10,6 +10,7 @@
 // there is no escaping to get wrong. The CSP (default-src 'none') is the second
 // line, not the first.
 import { copyText, selectNode } from './copy-button.js'
+import { modePill, rosterNotice } from './access-copy.js'
 
 const TOKEN_KEY = 'mirall-relay.admin-token'
 const COPY_IDLE = 'Copy invite'
@@ -86,6 +87,7 @@ function lock (message) {
   show('unlock', true)
   show('manage', false)
   show('roster', false)
+  show('mode-notice', false)
   revealed = null
   // Cleared, not merely hidden: forgetting the token must also remove protected
   // labels and tickets from the DOM.
@@ -107,24 +109,14 @@ function renderSummary (data) {
   const access = data.access || {}
   const members = access.members || { active: 0, total: 0 }
 
-  if (access.mode === 'invite') {
-    setPill(members.active === 1 ? '1 member' : members.active + ' members', members.active ? 'good' : 'warn')
-  } else {
-    setPill(access.mode === 'allowlist' ? 'Allowlist' : 'Open relay', 'idle')
-  }
+  const pill = modePill(access)
+  setPill(pill.text, pill.tone)
 
-  // Minting into a relay that is not in invite mode is the one thing an operator
-  // can do here that quietly achieves nothing, so it is said out loud.
-  const warning = el('mode-warning')
-  if (access.mode === 'invite') {
-    warning.hidden = true
-  } else {
-    warning.hidden = false
-    warning.textContent =
-      'This relay is in ' + (access.mode || 'open') + ' mode, so invites are recorded but do not gate anything yet. ' +
-      'Set MIRALL_RELAY_ACCESS=invite and restart to gate on the roster. ' +
-      'Any MIRALL_RELAY_ALLOWLIST keys stay admitted alongside it — the admitted set is the union of the two.'
-  }
+  // Minting into a relay that does not gate on the roster quietly excludes
+  // nobody, so it is said out loud.
+  const notice = rosterNotice(access)
+  el('mode-notice').textContent = notice || ''
+  show('mode-notice', notice !== null)
 
   const refused = access.refusedLastHour || 0
   el('roster-summary').textContent =

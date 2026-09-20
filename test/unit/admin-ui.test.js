@@ -311,3 +311,74 @@ test('the masthead carries the same two-page nav the members page does', () => {
   const off = renderPage(status({ access: { mode: 'open', allowlisted: null, banned: 0, members: null, refusedLastHour: 0, managed: false } }))
   assert.ok(!off.includes('>Members<'), 'and it is not offered when there is no members page')
 })
+
+const INVITE = (active, managed = true) => ({ mode: 'invite', members: { active, total: active }, allowlisted: active, banned: 0, refusedLastHour: 0, managed })
+const ALLOWLIST = { mode: 'allowlist', allowlisted: 2, banned: 0, members: null, refusedLastHour: 0, managed: true }
+
+test('the hero names the mode, in every mode', () => {
+  assert.match(renderPage(status()), /id="mode-pill">Public relay</)
+  assert.match(renderPage(status({ access: INVITE(2) })), /class="pill good" id="mode-pill">Private relay · 2 members</)
+  assert.match(renderPage(status({ access: INVITE(0) })), /class="pill warn" id="mode-pill">Private relay · no members</)
+  assert.match(renderPage(status({ access: ALLOWLIST })), /id="mode-pill">Restricted · 2 static keys</)
+})
+
+test('a private relay never says the key is all a client needs', () => {
+  // On a private relay a key-only client is refused, and a refusal looks exactly
+  // like an offline relay.
+  const html = renderPage(status({ access: INVITE(2) }))
+  assert.ok(!html.includes('the only thing a client needs'))
+  assert.match(html, /<h2>Invite people<\/h2>/)
+  assert.match(html, /key alone will not get anyone in/)
+})
+
+test('a private relay offers no QR of a key that cannot connect anyone', () => {
+  const html = renderPage(status({ access: INVITE(2) }))
+  assert.ok(!html.includes('<figure class="qr">'))
+  assert.ok(!html.includes('href="qr.svg"'))
+  assert.ok(html.includes(KEY), 'the key still identifies the relay')
+  assert.match(html, /id="copy-key"/)
+})
+
+test('a public relay keeps the key card exactly as it was', () => {
+  const html = renderPage(status())
+  assert.match(html, /<h2>Relay public key<\/h2>/)
+  assert.match(html, /<figure class="qr">/)
+  assert.match(html, /href="qr\.svg"/)
+  assert.match(html, /the only thing a client needs/)
+})
+
+test('an allowlist relay says who the key works for, and drops the QR', () => {
+  const html = renderPage(status({ access: ALLOWLIST }))
+  assert.match(html, /MIRALL_RELAY_ALLOWLIST/)
+  assert.ok(!html.includes('the only thing a client needs'))
+  assert.ok(!html.includes('<figure class="qr">'))
+})
+
+test('the add-members route is stated once on a private relay', () => {
+  const html = renderPage(status({ access: INVITE(3) }))
+  assert.equal(html.split('members page</a>').length - 1, 1)
+})
+
+test('an empty private relay is loud in the access card and still offers the way out', () => {
+  const html = renderPage(status({ access: INVITE(0) }))
+  assert.match(html, /refusing everyone/)
+  assert.match(html, /href="admin\/"/)
+})
+
+test('a private relay with the members page off points at the CLI in the key card', () => {
+  const html = renderPage(status({ access: INVITE(1, false) }))
+  const card = html.slice(html.indexOf('class="card identity"'), html.indexOf('class="card reachability"'))
+  assert.match(card, /invite create/)
+  assert.ok(!card.includes('href="admin/"'))
+})
+
+test('a public relay is told how to go private, with no precondition', () => {
+  const body = renderPage(status()).split('<main>')[1]
+  assert.match(body, /MIRALL_RELAY_ACCESS=invite/)
+  assert.match(body, /before or after/)
+})
+
+test('the mode row carries the operator word beside the config value', () => {
+  assert.match(renderPage(status()), /Public <span class="muted">\(open\)<\/span>/)
+  assert.match(renderPage(status({ access: INVITE(1) })), /Private <span class="muted">\(invite\)<\/span>/)
+})

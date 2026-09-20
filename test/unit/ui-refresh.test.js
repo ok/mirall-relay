@@ -117,6 +117,9 @@ test('a change in the access card asks for the page, not a field patch', () => {
 
   const flipped = { ...invite, access: { ...invite.access, mode: 'open' } }
   assert.equal(shouldReload(flipped, dataset), true, 'and so does the mode')
+
+  const listed = { ...invite, access: { ...invite.access, allowlisted: 2 } }
+  assert.equal(shouldReload(listed, dataset), true, 'and the static key count the pill shows')
 })
 
 test('a dataset from a render that stamped no access signature does not loop', () => {

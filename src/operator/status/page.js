@@ -14,6 +14,7 @@ import { assetPath, readAssets } from '../assets.js'
 import { encodeQr, qrSvg } from '../../qr.js'
 import { formatBytes, formatCount, formatField, formatMs, formatRate } from '../format.js'
 import { accessSignature, reachabilitySignature } from './refresh.client.js'
+import { modePill, modeWord } from '../access-copy.js'
 import { escapeHtml, plain } from '../html.js'
 
 export { etagFor } from '../assets.js'
@@ -195,12 +196,9 @@ function accessWarning (access) {
   return `<p class="note warn">${manageSentence(access)}</p>`
 }
 
-// Shown whether or not the roster is empty, so the invite-management route stays
-// discoverable after the first member exists.
-function manageHint (access) {
-  if (access.mode !== 'invite') return ''
-  if (!access.members || access.members.active === 0) return '' // already said, loudly
-  return `<p class="hint">${manageSentence(access)}</p>`
+function privateHint (access) {
+  if (access.mode !== 'open') return ''
+  return '<p class="hint">To make this relay private, switch its access to Private (<code>MIRALL_RELAY_ACCESS=invite</code>). Members can be added before or after.</p>'
 }
 
 function manageSentence (access) {
@@ -218,7 +216,7 @@ function pageNav (access) {
 }
 
 function accessRows (access) {
-  const out = [['Mode', escapeHtml(access.mode)]]
+  const out = [['Mode', `${escapeHtml(modeWord(access))} <span class="muted">(${escapeHtml(access.mode)})</span>`]]
   const members = access.members ? access.members.active : null
   if (access.members) {
     out.push(['Members', field('access.members.active', 'count', members)])
@@ -235,10 +233,54 @@ function accessRows (access) {
   return out
 }
 
+// On a private relay the key alone gets a client refused, and a refusal looks
+// like an offline relay, so the card must not encourage handing out the key.
+function identitySection (access, key, seedWarning, seedLine) {
+  const shareable = access.mode === 'open'
+  const keyBlock = key
+    ? `
+      <div class="key-block">
+        <code class="key" id="public-key">${escapeHtml(key)}</code>
+        <div class="key-actions">
+          <button type="button" id="copy-key" data-key="${escapeHtml(key)}">Copy key</button>
+          ${shareable ? '<a href="qr.svg" download="mirall-relay-key.svg">Download QR</a>' : ''}
+        </div>
+      </div>
+      ${shareable ? `<figure class="qr">${publicKeyQr(key)}<figcaption>Scan to read the key</figcaption></figure>` : ''}`
+    : '<p class="muted">No identity yet — the relay has not finished starting.</p>'
+
+  return `<section class="card identity">
+    <h2>${access.mode === 'invite' ? 'Invite people' : 'Relay public key'}</h2>
+    ${identityLead(access)}
+    <div class="identity-grid">${keyBlock}</div>
+    ${identityHint(access)}
+    ${seedWarning}
+    <p class="muted">${seedLine}</p>
+  </section>`
+}
+
+function identityLead (access) {
+  if (access.mode !== 'invite') return ''
+  // An empty roster already gets this sentence, loudly, in the access card.
+  const manage = access.members && access.members.active > 0 ? `<p class="hint">${manageSentence(access)}</p>` : ''
+  return `<p class="verdict">This relay is private. The key alone will not get anyone in — each person needs their own invite.</p>${manage}`
+}
+
+function identityHint (access) {
+  if (access.mode === 'invite') {
+    return '<p class="hint">This key identifies the relay. It is safe to publish, and is not enough to connect.</p>'
+  }
+  if (access.mode === 'allowlist') {
+    return '<p class="hint">Only the static <code>MIRALL_RELAY_ALLOWLIST</code> keys can connect. Anyone else who pastes this key into Mirall is refused.</p>'
+  }
+  return '<p class="hint">Paste this into Mirall under <strong>Settings → Network → Add a relay</strong>. It is the only thing a client needs — there is no host, port, token or account.</p>'
+}
+
 export function renderPage (status) {
   const { identity, reachability, traffic, caps, access, labels } = status
   const key = identity.publicKey
   const current = verdict(reachability)
+  const mode = modePill(access)
   const bound = reachability.bound
   // While firewalled, dht-rpc's socket getter returns the ephemeral CLIENT socket
   // (dht-rpc/index.js:139), so the observed port is a temporary probing port and
@@ -261,18 +303,6 @@ export function renderPage (status) {
   const listenPort = reachability.port === 0
     ? (bound ? `${bound.port} (ephemeral — pin it with MIRALL_RELAY_PORT)` : 'ephemeral')
     : String(reachability.port)
-
-  const identityCard = key
-    ? `
-      <div class="key-block">
-        <code class="key" id="public-key">${escapeHtml(key)}</code>
-        <div class="key-actions">
-          <button type="button" id="copy-key" data-key="${escapeHtml(key)}">Copy key</button>
-          <a href="qr.svg" download="mirall-relay-key.svg">Download QR</a>
-        </div>
-      </div>
-      <figure class="qr">${publicKeyQr(key)}<figcaption>Scan to read the key</figcaption></figure>`
-    : '<p class="muted">No identity yet — the relay has not finished starting.</p>'
 
   const seedLine = identity.seedPath
     ? `Identity seed: <code>${escapeHtml(identity.seedPath)}</code>${identity.seedFrom === 'secret-file' ? ' (mounted secret)' : ''}. Back it up — losing it strands every client configured with this key.`
@@ -316,16 +346,11 @@ export function renderPage (status) {
     <h2 class="visually-hidden">Summary</h2>
     <p class="hero-verdict" id="verdict-sentence-label">${escapeHtml(current.label)}</p>
     <p class="hero-sentence" id="verdict-sentence">${escapeHtml(current.sentence)}</p>
+    <p class="hero-mode"><span class="pill ${mode.tone}" id="mode-pill">${escapeHtml(mode.text)}</span></p>
     <dl class="tiles">${tiles(status, access)}</dl>
   </section>
 
-  <section class="card identity">
-    <h2>Relay public key</h2>
-    <div class="identity-grid">${identityCard}</div>
-    <p class="hint">Paste this into Mirall under <strong>Settings → Network → Add a relay</strong>. It is the only thing a client needs — there is no host, port, token or account.</p>
-    ${seedWarning}
-    <p class="muted">${seedLine}</p>
-  </section>
+  ${identitySection(access, key, seedWarning, seedLine)}
 
   <section class="card reachability">
     <h2>Reachability</h2>
@@ -381,7 +406,7 @@ export function renderPage (status) {
     <h2>Who may connect</h2>
     <p class="verdict">${escapeHtml(accessSentence(access))}</p>
     ${accessWarning(access)}
-    ${manageHint(access)}
+    ${privateHint(access)}
     <dl class="facts">
       ${rows(accessRows(access))}
     </dl>

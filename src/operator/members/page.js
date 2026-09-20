@@ -25,7 +25,9 @@ const ASSETS = {
   // The same file the status page serves at /copy-button.js. Served here too
   // rather than shared by URL, because /copy-button.js is a ui path and
   // MIRALL_RELAY_ADMIN_UI=false takes it away.
-  '/admin/copy-button.js': [assetPath('copy-button.js'), 'text/javascript; charset=utf-8']
+  '/admin/copy-button.js': [assetPath('copy-button.js'), 'text/javascript; charset=utf-8'],
+  // Shared with the status page's server render, so both pages name the mode alike.
+  '/admin/access-copy.js': [assetPath('access-copy.js'), 'text/javascript; charset=utf-8']
 }
 
 export const PAGE_PATH = '/admin/'
@@ -93,6 +95,8 @@ export function renderManagePage ({ region = null, operator = null, version = nu
     <p class="hint">It was written to <code>MIRALL_RELAY_ADMIN_TOKEN_FILE</code> (<code>/data/admin-token</code> in the container) and printed <strong>once</strong> to the log on the boot that created it, as <code>"adminToken"</code>. It is kept for this browser tab only and is never stored on disk here.</p>
   </section>
 
+  <p class="note warn" id="mode-notice" hidden></p>
+
   <section class="card" id="manage" hidden>
     <h2>Invite someone</h2>
     <form id="mint-form" class="stack">
@@ -104,7 +108,6 @@ export function renderManagePage ({ region = null, operator = null, version = nu
     </form>
     <p class="hint">Your own handle for the person: letters, digits, dot, dash or underscore. It is never shown on the public status page.</p>
     <p class="note warn">Anyone holding an invite <em>is</em> that member. One per person, not one per device — every device they install Mirall on shares it. If it leaks, revoke and re-issue.</p>
-    <p class="note warn" id="mode-warning" hidden></p>
   </section>
 
   <section class="card" id="roster" hidden>
