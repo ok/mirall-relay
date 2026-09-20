@@ -45,6 +45,12 @@ startup, and read a port mismatch as "firewalled" before reading it as "misconfi
 result.** The VM's NAT means the relay is genuinely not publicly reachable, so a local
 Docker run smoke-tests boot and serve — never reachability. Don't debug it as a failure.
 
+**`server.close()` waits forever on a socket that connected and never sent a request.**
+Node's idle-connection sweep only covers sockets that have finished a request, and browsers
+and platform proxies open silent speculative ones constantly. The tell is a shutdown that
+always takes exactly the timeout and exits 1, but only on a box someone has a page open on.
+Call `server.closeAllConnections()` right after `server.close()`.
+
 ## Operator experience
 
 **Do not put a precondition in front of a state the relay already handles safely — label
