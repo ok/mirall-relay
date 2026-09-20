@@ -267,3 +267,32 @@ test('HEAD works on the page, so an uptime check can use it', async (t) => {
   assert.ok(Number(out.headers['content-length']) > 0)
   assert.equal(out.body, '')
 })
+
+test('/admin/access-copy.js is served without a token, like the rest of the shell', async (t) => {
+  // A module import cannot send an Authorization header.
+  const relay = await withHttpRelay(t)
+  const out = await request(urlOf(relay, '/admin/access-copy.js'))
+  assert.equal(out.statusCode, 200)
+  assert.match(out.headers['content-type'], /javascript/)
+  assert.match(out.body, /export function modePill/)
+})
+
+test('a private relay with no members says so, and offers no QR', async (t) => {
+  const relay = await withHttpRelay(t, { MIRALL_RELAY_ACCESS: 'invite' })
+  const out = await request(urlOf(relay, '/'))
+  assert.match(out.body, /Private relay · no members/)
+  assert.match(out.body, /refusing everyone/)
+  assert.ok(!out.body.includes('<figure class="qr">'))
+})
+
+test('minting the first member moves the served pill off "no members"', async (t) => {
+  const relay = await withHttpRelay(t, { MIRALL_RELAY_ACCESS: 'invite' })
+  const minted = await jsonRequest(urlOf(relay, '/admin/invites'), {
+    method: 'POST',
+    headers: { authorization: `Bearer ${relay.adminToken}` },
+    body: { label: 'ben' }
+  })
+  assert.equal(minted.statusCode, 201)
+  const out = await request(urlOf(relay, '/'))
+  assert.match(out.body, /Private relay · 1 member</)
+})

@@ -163,7 +163,14 @@ it does not make the port safe to publish.
 
 ### Managing members
 
-Only relevant with `MIRALL_RELAY_ACCESS=invite`. The roster file is the source of
+The roster gates the relay only with `MIRALL_RELAY_ACCESS=invite`, but it can be
+filled at any time. **Going private** works in either order: invites connect on a
+public relay too, so minting and sending them first means the switch disconnects
+nobody; switching first leaves a relay that refuses everyone until the first
+member exists, and the status page says so. With `ACCESS=open` plus an
+`ALLOWLIST`, roster members are refused until the mode is `invite`.
+
+The roster file is the source of
 truth and the CLI writes it directly, so this works whether or not the relay is
 running — a running one notices within about five seconds.
 
