@@ -27,7 +27,8 @@ const ASSETS = {
   // MIRALL_RELAY_ADMIN_UI=false takes it away.
   '/admin/copy-button.js': [assetPath('copy-button.js'), 'text/javascript; charset=utf-8'],
   // Shared with the status page's server render, so both pages name the mode alike.
-  '/admin/access-copy.js': [assetPath('access-copy.js'), 'text/javascript; charset=utf-8']
+  '/admin/access-copy.js': [assetPath('access-copy.js'), 'text/javascript; charset=utf-8'],
+  '/admin/icon.png': [assetPath('icon.png'), 'image/png']
 }
 
 export const PAGE_PATH = '/admin/'

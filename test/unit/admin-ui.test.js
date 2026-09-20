@@ -404,16 +404,19 @@ test('the hero headline carries the mode at the same weight as the verdict', () 
   assert.ok(!hero.includes('class="pill'), 'and the hero no longer needs a pill of its own')
 })
 
-test('both pages carry the same real icon, inline', async () => {
+test('both pages carry the same icon, and each serves its own copy', async () => {
   // An empty data: icon silenced the favicon request but left the tab blank.
-  const { renderManagePage } = await import('../../src/operator/members/page.js')
-  const icon = /<link rel="icon" type="image\/svg\+xml" href="(data:image\/svg\+xml,[^"]+)">/
-  const onStatus = renderPage(status()).match(icon)
-  const onMembers = renderManagePage().match(icon)
-  assert.ok(onStatus && onMembers, 'each page declares an svg icon')
-  assert.equal(onStatus[1], onMembers[1])
-  const svg = decodeURIComponent(onStatus[1].slice('data:image/svg+xml,'.length))
-  assert.match(svg, /^<svg xmlns=/)
-  assert.match(svg, /#fb9c43/, 'the brand orange')
-  assert.ok(!onStatus[1].includes('"') && !onStatus[1].includes('<'), 'safe inside a double-quoted attribute')
+  const { renderManagePage, managePaths } = await import('../../src/operator/members/page.js')
+  const icon = '<link rel="icon" type="image/png" href="icon.png">'
+  assert.ok(renderPage(status()).includes(icon), 'relative, so a proxy prefix works')
+  assert.ok(renderManagePage().includes(icon))
+
+  const onStatus = loadAssets().get('/icon.png')
+  const onMembers = managePaths().get('/admin/icon.png')
+  assert.ok(onStatus && onMembers, 'MIRALL_RELAY_ADMIN_UI=false must not take the members icon away')
+  assert.equal(onStatus.type, 'image/png')
+  assert.ok(onStatus.body.equals(onMembers.body))
+  assert.deepEqual([...onStatus.body.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 'a real PNG')
+  assert.ok(onStatus.body.length < 16 * 1024, 'small enough to be a tab icon, not the full artwork')
+  assert.ok(uiPaths.has('/icon.png'), 'and covered by the Host guard like the other ui paths')
 })
