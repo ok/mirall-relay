@@ -15,7 +15,7 @@ import { encodeQr, qrSvg } from '../../qr.js'
 import { formatBytes, formatCount, formatField, formatMs, formatRate } from '../format.js'
 import { accessSignature, reachabilitySignature } from './refresh.client.js'
 import { modePill, modeWord, reachabilityPill } from '../access-copy.js'
-import { escapeHtml, plain } from '../html.js'
+import { escapeHtml, FAVICON_LINK, plain } from '../html.js'
 
 export { etagFor } from '../assets.js'
 
@@ -310,7 +310,7 @@ export function renderPage (status) {
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex, nofollow">
 <title>mirall-relay</title>
-<link rel="icon" href="data:,">
+${FAVICON_LINK}
 <link rel="stylesheet" href="ui.css">
 </head>
 <body data-reachability="${escapeHtml(reachabilitySignature(reachability))}" data-access="${escapeHtml(accessSignature(access))}">

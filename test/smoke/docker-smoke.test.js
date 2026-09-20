@@ -58,13 +58,23 @@ async function removeContainer (name) {
 
 async function waitForHealthz (timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs
-  for (;;) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${ADMIN_PORT}/healthz`)
-      if (res.ok) return await res.json()
-    } catch { /* not up yet */ }
-    if (Date.now() > deadline) throw new Error('container never became healthy')
-    await new Promise((resolve) => setTimeout(resolve, 500))
+  // docker-proxy accepts the published port before the app inside is listening,
+  // and a fetch parked on that socket does not hold the event loop open: the
+  // process drained mid-await and the runner cancelled every test in the file
+  // ("Promise resolution is still pending"). The interval keeps the loop alive,
+  // and the per-request timeout turns a parked fetch into an ordinary retry.
+  const keepAlive = setInterval(() => {}, 1000)
+  try {
+    for (;;) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${ADMIN_PORT}/healthz`, { signal: AbortSignal.timeout(3000) })
+        if (res.ok) return await res.json()
+      } catch { /* not up yet */ }
+      if (Date.now() > deadline) throw new Error('container never became healthy')
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  } finally {
+    clearInterval(keepAlive)
   }
 }
 
