@@ -22,6 +22,7 @@ import Relay from 'blind-relay'
 import b4a from 'b4a'
 import { bootstrapNodes } from './config.js'
 import { resolveSeed, keyPairFromSeed, publicKeyZ32 } from './keys.js'
+import { startReprobe } from './reprobe.js'
 
 // udx's socket.address() returns { host, family, port } — NOT Node's dgram shape
 // with `address`. Normalised here so the status snapshot has one contract and a
@@ -47,6 +48,7 @@ export class RelayNode {
     this.dht = null
     this.server = null // hyperdht server (our listening identity)
     this.relay = null // the single blind-relay.Server
+    this.reprobe = null
     this.keyPair = null
     this.ready = false
     this.closing = false
@@ -158,6 +160,17 @@ export class RelayNode {
       )
     }
 
+    // Asserted reachability was never probed, so there is nothing to re-run.
+    if (!cfg.assumeReachable) {
+      this.reprobe = startReprobe(this.dht, {
+        onResult: (firewalled) => {
+          this.metrics?.m.dhtFirewalled.set(firewalled ? 1 : 0)
+          if (!firewalled) logger?.info({ publicKey: this.publicKeyZ32 }, 'reachability re-probe passed — the relay is now reachable')
+        },
+        onUnsupported: () => logger?.warn('this dht-rpc has no re-probe hook — a firewalled verdict will stand until restart')
+      })
+    }
+
     logger?.info({
       publicKey: this.publicKeyZ32,
       firewalled: this.firewalled,
@@ -266,6 +279,7 @@ export class RelayNode {
     this.ready = false
     this.metrics?.m.ready.set(0)
 
+    this.reprobe?.stop()
     this.meter?.stop()
     this.firewall?.stop()
 
