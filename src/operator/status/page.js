@@ -114,9 +114,9 @@ function remediation (reachability, listenPort) {
   const port = escapeHtml(listenPort)
   if (reachability.state === 'port-unstable') {
     return [
-      'On Docker use <code>network_mode: host</code>. Publishing the port with <code>-p …/udp</code> puts Docker’s NAT in the outbound path.',
       `If a NAT, VPN or tunnel sits between this host and the internet, it must keep the source port of UDP ${port} unchanged. If it cannot, run the relay where it has a public IP, or forward on a NAT that preserves ports.`,
       `After a network or container change, stale connection-tracking state on the host can keep rewriting the port. Restart the relay; if this persists for more than a few minutes, run <code>conntrack -D -p udp --orig-port-src ${escapeHtml(reachability.bound ? reachability.bound.port : reachability.port)}</code> on the host (for a container, <code>conntrack -D -p udp -s &lt;container IP&gt;</code>).`,
+      'On Docker use <code>network_mode: host</code>. Publishing the port with <code>-p …/udp</code> puts Docker’s NAT in the outbound path.',
       CONFIRM_STEP
     ]
   }

@@ -111,10 +111,10 @@ returns 503 on `/readyz`, and serves nothing.
 
 `"state": "port-unstable"` — **Port unstable** on the page — means the port is
 open, but something between the relay and the internet rewrites its outbound UDP
-port, so peers cannot connect to it directly. `/readyz` returns 503. The usual
-causes are Docker port publishing instead of host networking, a NAT or tunnel in
-front of the host, or stale connection-tracking state after a network change;
-`OPERATIONS.md` §3 has the fixes.
+port, so peers cannot connect to it directly. `/readyz` returns 503. The causes are
+a NAT or tunnel in front of the host, stale connection-tracking state after a
+network change, or Docker port publishing instead of host networking;
+`OPERATIONS.md` §3 has the fixes, and explains why it can come and go.
 
 `"state": "unknown"` means the relay is still learning its public address, which
 is normal for a few minutes after startup or a change of public IP. `/readyz`

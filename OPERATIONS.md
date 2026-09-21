@@ -120,11 +120,20 @@ both reported as `port-unstable`:
 `/readyz`, `status.json` `state`, the page (**Port unstable**, with the steps), the
 log (`outbound UDP port is being rewritten`, at `warn`) and
 `relay_reachability_state{state="port-unstable"}` all raise it. The causes, in the
-order to check them: the container publishes the port through Docker's NAT
-(`-p …/udp`) instead of host networking; a NAT or tunnel between the host and the
-internet rewrites outbound ports (cloud NAT gateway, CGNAT, a VPN or WireGuard
-tunnel); stale conntrack state on the host after a network or container change.
+order to check them: a NAT or tunnel between the host and the internet rewrites
+outbound ports (cloud NAT gateway, CGNAT, a VPN or WireGuard tunnel); stale
+conntrack state on the host after a network or container change; Docker's NAT, when
+the container publishes the port (`-p …/udp`) instead of using host networking.
 Fixes are in [The relay is up but nothing connects](#the-relay-is-up-but-nothing-connects).
+
+**It can come and go.** Only flows the relay *starts* are rewritten; replies on
+flows other nodes started keep the real port. Once enough nodes have contacted a
+running relay, HyperDHT can settle on the real port again, advertise it, and direct
+connections then genuinely work, so `/readyz` reads `reachable` and is right to. It
+breaks again after a restart, and can when the relay re-samples its address (a
+known node is re-sampled every 30 minutes). The same slow re-sampling means a
+rewrite that begins on a relay that is already running can take about 30 minutes to
+show. To check for one, restart the relay and read `/readyz` in the first minute.
 
 **Unknown after a network change.** When the host's public IP changes, the relay
 spends a few minutes re-learning it, and HyperDHT advertises no public address
@@ -134,10 +143,12 @@ it has not settled after 10 minutes. Alert on it only when it lasts (the example
 rule in `deploy/prometheus-scrape.example.yml` waits 10 minutes).
 
 **Docker networking.** `network_mode: host` is the reliable choice. Publishing
-UDP with `-p 49737:49737/udp` works on many hosts, but Docker's userland proxy and
-conntrack can rewrite the external mapping, which reads as **Port unstable** on
-`/readyz` and the page. If you must publish rather than share the host network,
-also verify with `scripts/probe.js` from a *different* machine.
+UDP with `-p 49737:49737/udp` also worked when measured (2026-09-21, a cloud VM with
+its public IP on the interface: `reachable` for 30 minutes and probes bridged), but
+it puts Docker's NAT and its conntrack state in the outbound path, where a clash can
+rewrite the port and read as **Port unstable**. If you must publish rather than
+share the host network, also verify with `scripts/probe.js` from a *different*
+machine.
 
 **`MIRALL_RELAY_ASSUME_REACHABLE`** skips hyperdht's own probing. Set it only when
 you know the host is public — setting it while actually firewalled produces a
@@ -305,18 +316,18 @@ page (a lost seed is the usual cause — check the **Identity seed** line);
 
 For `"state": "port-unstable"` (see [Port unstable](#3-networking-and-reachability)):
 
-1. **Docker port publishing.** Switch to `network_mode: host`. Until then, clearing
-   the container's stale mappings can help:
-   `conntrack -D -p udp -s $(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container>)`.
-2. **A NAT or tunnel in front of the host.** It must keep the relay's UDP source
+1. **A NAT or tunnel in front of the host.** It must keep the relay's UDP source
    port unchanged. If it cannot, run the relay where it has a public IP, or forward
    on a NAT that preserves ports.
-3. **Stale conntrack state** after a network or container change. Restart the
+2. **Stale conntrack state** after a network or container change. Restart the
    relay; if it is still `port-unstable` after a few minutes, clear the relay's
    entries on the host:
    - host networking or bare metal: `conntrack -D -p udp --orig-port-src <MIRALL_RELAY_PORT>`;
    - any container platform (StartOS, Umbrel): `conntrack -D -p udp -s <container IP>`,
      and see that platform's package docs.
+3. **Docker port publishing.** Switch to `network_mode: host`. Until then, clearing
+   the container's stale mappings can help:
+   `conntrack -D -p udp -s $(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container>)`.
 
 It recovers on its own once the rewrite stops: the log says `outbound UDP port is
 stable again` and `/readyz` returns 200.

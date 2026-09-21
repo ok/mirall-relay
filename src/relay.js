@@ -233,7 +233,7 @@ export class RelayNode {
       logger?.warn(
         { publicKey: this.publicKeyZ32, ...seen, boundPort: net.address ? net.address.port : null, portRandomized: net.randomized },
         'outbound UDP port is being rewritten — peers see this relay on a different port than it listens on, so they cannot connect to it directly and most cannot hole-punch to it either. ' +
-        'Causes: Docker port publishing (-p …/udp) instead of host networking, a NAT or tunnel in front of the host that rewrites ports, or stale conntrack state on the host. ' +
+        'Causes: a NAT or tunnel in front of the host that rewrites ports, stale conntrack state on the host, or Docker port publishing (-p …/udp) instead of host networking. ' +
         'See OPERATIONS.md "The relay is up but nothing connects".'
       )
     } else if (next === 'unknown-long') {
