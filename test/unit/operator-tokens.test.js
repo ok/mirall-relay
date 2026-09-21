@@ -33,7 +33,7 @@ test('both pages wear the same masthead and footer', () => {
   for (const html of [members, status]) {
     // One title, one nav, and the version down in the footer rather than a
     // sub-line only one of the two pages had.
-    assert.match(html, /<h1>mirall-relay<\/h1>/)
+    assert.match(html, /<h1>Mirall Relay<\/h1>/)
     assert.match(html, /<nav class="pages" aria-label="Pages">/)
     assert.match(html, /<div class="footer-links">/)
     assert.match(html, /<p class="footer-meta">/)

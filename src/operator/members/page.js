@@ -63,14 +63,14 @@ export function renderManagePage ({ region = null, operator = null, version = nu
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex, nofollow">
-<title>mirall-relay members</title>
+<title>Mirall Relay members</title>
 ${FAVICON_LINK}
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="masthead">
   <div>
-    <h1>mirall-relay</h1>
+    <h1>Mirall Relay</h1>
     <nav class="pages" aria-label="Pages">
       ${statusLink}
       <a href="./" aria-current="page">Members</a>
