@@ -115,3 +115,12 @@ test('the roster is named beside the seed in the backup rules', () => {
   assert.match(OPERATIONS, /locks\s+out\s+every\s+member/, 'with what losing it costs')
   assert.match(OPERATIONS, /hands\s+over\s+every\s+membership/, 'and what leaking it costs')
 })
+
+test('/readyz is documented as the reachability state, not the firewall flag alone', () => {
+  const row = README.split('\n').find((line) => line.startsWith('| `/readyz` |'))
+  assert.ok(row, 'the endpoint table has a /readyz row')
+  assert.match(row, /`state`/, 'the row names the field a consumer switches on')
+  assert.match(row, /port-unstable/)
+  assert.match(row, /never liveness/, 'and warns against the probe that would restart-loop')
+  assert.match(OPERATIONS, /Port unstable/, 'the runbook explains the state')
+})

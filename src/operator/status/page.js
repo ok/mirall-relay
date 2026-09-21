@@ -72,12 +72,13 @@ export function standaloneQr (publicKey) {
 }
 
 const SENTENCES = {
-  reachable: 'Peers on the open internet can hole-punch to this relay.',
+  reachable: 'Peers on the open internet can connect to this relay directly.',
   assumed: 'MIRALL_RELAY_ASSUME_REACHABLE is set, so reachability was asserted rather than measured. Confirm it from another machine before publishing the key.',
   firewalled: 'HyperDHT probed this node from the outside and could not reach it. Clients cannot use this relay until the UDP port is open.',
+  'port-unstable': 'Peers can reach this relay, but something between it and the internet rewrites its outbound UDP port, so the DHT cannot advertise a stable address. Peers cannot connect to it directly, and most cannot hole-punch to it either.',
   starting: 'Still bootstrapping onto the DHT.',
   stopped: 'The relay is shutting down. In-flight relayed connections are dropping.',
-  unknown: 'The DHT node has not reported a reachability verdict yet.'
+  unknown: 'The DHT has not settled on this relay’s public address yet. That is normal for a few minutes after startup or a network change; until it settles, peers cannot connect directly.'
 }
 
 export function verdict (reachability) {
@@ -87,10 +88,13 @@ export function verdict (reachability) {
 
 function notes (reachability) {
   const out = []
+  const bound = reachability.bound
   if (reachability.portRandomized) {
+    out.push('The DHT sees this relay on a different external port for each destination, as behind a symmetric NAT, so there is no single address to give peers.')
+  } else if (reachability.state === 'port-unstable' && reachability.publicPort && bound && reachability.publicPort !== bound.port) {
     out.push(
-      'This host is behind a NAT that assigns a different external port per destination (symmetric NAT). ' +
-      'A relay needs a stable external UDP port, so hole-punching to it will fail even when the reachability check above passes.'
+      `Peers see this relay on port ${reachability.publicPort}, but it listens on port ${bound.port}. ` +
+      'Something between the relay and the internet rewrites its outbound port.'
     )
   }
   // Only when the OPERATOR asked for it. hyperdht keeps a firewalled node
@@ -104,14 +108,25 @@ function notes (reachability) {
   return out
 }
 
+const CONFIRM_STEP = 'Confirm from a <em>different</em> machine: <code>node scripts/probe.js --relay &lt;public-key&gt;</code>'
+
 function remediation (reachability, listenPort) {
+  const port = escapeHtml(listenPort)
+  if (reachability.state === 'port-unstable') {
+    return [
+      'On Docker use <code>network_mode: host</code>. Publishing the port with <code>-p …/udp</code> puts Docker’s NAT in the outbound path.',
+      `If a NAT, VPN or tunnel sits between this host and the internet, it must keep the source port of UDP ${port} unchanged. If it cannot, run the relay where it has a public IP, or forward on a NAT that preserves ports.`,
+      `After a network or container change, stale connection-tracking state on the host can keep rewriting the port. Restart the relay; if this persists for more than a few minutes, run <code>conntrack -D -p udp --orig-port-src ${escapeHtml(reachability.bound ? reachability.bound.port : reachability.port)}</code> on the host (for a container, <code>conntrack -D -p udp -s &lt;container IP&gt;</code>).`,
+      CONFIRM_STEP
+    ]
+  }
   if (reachability.state !== 'firewalled') return []
   return [
     `Open and forward <strong>UDP ${escapeHtml(listenPort)}</strong> to this host, in both directions. UDP, not TCP.`,
     'Check the host firewall, and on a cloud host the security group.',
     'On Docker prefer <code>network_mode: host</code>; a published port can have its external mapping rewritten by the userland proxy.',
     'If your ISP puts you behind CGNAT there is no port to forward at all. A relay then needs a rented public address tunnelled back to this host; check whether your ISP will sell you a public IPv4.',
-    'Confirm from a <em>different</em> machine: <code>node scripts/probe.js --relay &lt;public-key&gt;</code>'
+    CONFIRM_STEP
   ]
 }
 
@@ -273,6 +288,8 @@ export function renderPage (status) {
   // observed host means dht-rpc's NAT sampler saw the port move — i.e. symmetric
   // NAT — so the configured number is precisely the one the NAT is not using, and
   // printing it reads as confirmation directly above the note saying otherwise.
+  // A NAT that rewrites the port consistently shows the rewritten port instead,
+  // which is the truth, under the note that explains it.
   const showPort = !probing && reachability.publicPort
   const publicAddress = reachability.publicHost
     ? (showPort ? `${reachability.publicHost}:${reachability.publicPort}` : reachability.publicHost)

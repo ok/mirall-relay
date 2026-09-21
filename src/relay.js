@@ -23,6 +23,8 @@ import b4a from 'b4a'
 import { bootstrapNodes } from './config.js'
 import { resolveSeed, keyPairFromSeed, publicKeyZ32 } from './keys.js'
 import { startReprobe } from './reprobe.js'
+import { watchReachability } from './reachability-watch.js'
+import { reachabilityState } from './status.js'
 
 const REPROBE_LOGGED = 6
 
@@ -51,6 +53,7 @@ export class RelayNode {
     this.server = null // hyperdht server (our listening identity)
     this.relay = null // the single blind-relay.Server
     this.reprobe = null
+    this.reach = null
     this.keyPair = null
     this.ready = false
     this.closing = false
@@ -82,6 +85,14 @@ export class RelayNode {
     }
   }
 
+  get publicAddress () {
+    try {
+      return this.dht ? this.dht.remoteAddress() : null
+    } catch {
+      return null
+    }
+  }
+
   relayStats () {
     return this.relay ? this.relay.stats : null
   }
@@ -89,16 +100,21 @@ export class RelayNode {
   // What the DHT believes about our place on the network. `host` and `port` are
   // dht-rpc's NAT sampler view (dht-rpc/index.js:126,130) — the address other
   // nodes actually observe, which is the number to compare against the port an
-  // operator forwarded. `randomized` is the one reachability failure the
-  // firewalled verdict does not catch: a symmetric NAT that hands out a fresh
-  // external port per destination reports firewalled: false and still cannot be
-  // hole-punched to.
+  // operator forwarded.
+  //
+  // `publicAddress` is the verdict the firewalled flag does not catch. It is
+  // dht.remoteAddress(), the exact predicate hyperdht uses to offer clients a
+  // direct connection (hyperdht/lib/server.js:273,361): null when the host is
+  // unknown, when the port is randomized per destination, or when the observed
+  // port differs from the bound one. A relay without it reports firewalled: false
+  // and still cannot be connected to directly.
   networkInfo () {
     const { dht } = this
-    if (!dht) return { host: null, port: null, randomized: false, bootstrapped: false, ephemeral: false, nodes: 0, address: null }
+    if (!dht) return { host: null, port: null, publicAddress: null, randomized: false, bootstrapped: false, ephemeral: false, nodes: 0, address: null }
     return {
       host: dht.host || null,
       port: dht.port || null,
+      publicAddress: this.publicAddress,
       randomized: !!dht.randomized,
       bootstrapped: !!dht.bootstrapped,
       ephemeral: !!dht.ephemeral,
@@ -164,11 +180,19 @@ export class RelayNode {
       )
     }
 
+    this.reach = watchReachability({
+      read: () => reachabilityState(this),
+      onChange: (prev, next) => this._logReachability(prev, next)
+    })
+    this.dht.on('nat-update', () => this.reach.check())
+
     // Asserted reachability was never probed, so there is nothing to re-run.
     if (!cfg.assumeReachable) {
       this.reprobe = startReprobe(this.dht, {
         onResult: (firewalled, attempt) => {
           this.metrics?.m.dhtFirewalled.set(firewalled ? 1 : 0)
+          // A firewalled -> reachable flip does not always emit 'nat-update'.
+          this.reach.check()
           // warn, not info: a relay that was red and recovered, or is still red
           // after a retry, is what an operator reading a quiet log is looking for.
           // Only the scheduled ramp is logged, so a closed port does not fill the log.
@@ -193,7 +217,40 @@ export class RelayNode {
       address: this.address
     }, 'relay listening')
 
+    // Once at ready: 'nat-update' has already fired during bootstrap, so a relay
+    // that starts out not directly reachable would otherwise never say so.
+    this.reach.check()
+
     return this
+  }
+
+  // Entering and leaving 'firewalled' is logged by start() and the re-probe.
+  _logReachability (prev, next) {
+    const { logger } = this
+    const net = this.networkInfo()
+    const seen = { publicHost: net.host, publicPort: net.port }
+    if (next === 'port-unstable') {
+      logger?.warn(
+        { publicKey: this.publicKeyZ32, ...seen, boundPort: net.address ? net.address.port : null, portRandomized: net.randomized },
+        'outbound UDP port is being rewritten — peers see this relay on a different port than it listens on, so they cannot connect to it directly and most cannot hole-punch to it either. ' +
+        'Causes: Docker port publishing (-p …/udp) instead of host networking, a NAT or tunnel in front of the host that rewrites ports, or stale conntrack state on the host. ' +
+        'See OPERATIONS.md "The relay is up but nothing connects".'
+      )
+    } else if (next === 'unknown-long') {
+      logger?.warn(
+        { publicKey: this.publicKeyZ32, minutes: 10 },
+        'public address still not settled after 10 minutes — the DHT sees this relay at inconsistent addresses (an egress that alternates public IPs, or a broken uplink)'
+      )
+    } else if (next === 'unknown') {
+      logger?.info(
+        { publicKey: this.publicKeyZ32 },
+        'public address not settled — the DHT is re-learning it, as after a network change; peers cannot connect directly until it does'
+      )
+    } else if (next === 'reachable' && prev === 'port-unstable') {
+      logger?.warn(seen, 'outbound UDP port is stable again — peers can connect to this relay directly')
+    } else if (next === 'reachable' && prev === 'unknown') {
+      logger?.info(seen, 'public address settled — peers can connect to this relay directly')
+    }
   }
 
   _onconnection (socket) {
@@ -289,6 +346,7 @@ export class RelayNode {
     this.metrics?.m.ready.set(0)
 
     this.reprobe?.stop()
+    this.reach?.stop()
     this.meter?.stop()
     this.firewall?.stop()
 

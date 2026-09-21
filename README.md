@@ -102,12 +102,23 @@ open http://localhost:9200
 
 # …or, on a headless host, ask the same questions over curl:
 curl -s localhost:9200/readyz
-# {"ready": true, "firewalled": false, "publicKey": "…"}
+# {"ready": true, "state": "reachable", "firewalled": false, "directlyReachable": true, "probed": true, "publicKey": "…"}
 ```
 
 `"firewalled": true` — **Not reachable** on the page — means clients cannot reach
 you. Open UDP 49737 and try again. A firewalled relay starts, logs an error,
 returns 503 on `/readyz`, and serves nothing.
+
+`"state": "port-unstable"` — **Port unstable** on the page — means the port is
+open, but something between the relay and the internet rewrites its outbound UDP
+port, so peers cannot connect to it directly. `/readyz` returns 503. The usual
+causes are Docker port publishing instead of host networking, a NAT or tunnel in
+front of the host, or stale connection-tracking state after a network change;
+`OPERATIONS.md` §3 has the fixes.
+
+`"state": "unknown"` means the relay is still learning its public address, which
+is normal for a few minutes after startup or a change of public IP. `/readyz`
+returns 503 until it settles.
 
 ### Running it locally (Docker Desktop) — smoke test only
 
@@ -124,10 +135,10 @@ docker run -d --name mirall-relay \
 open http://localhost:9200
 ```
 
-On a laptop this will report **`"firewalled": true`** and `/readyz` will return
-**503**, and that is correct: your machine is behind NAT, and on macOS/Windows
+On a laptop this will report **`"firewalled": true`**, or **Port unstable** or
+**Unknown**, and `/readyz` will return **503**, and that is correct: your machine is behind NAT, and on macOS/Windows
 Docker Desktop adds a Linux VM in between. The container is healthy and every
-endpoint works, but **it is not a usable relay** — no peer can hole-punch to it.
+endpoint works, but **it is not a usable relay** — no peer can connect to it.
 Use this to check the image, the endpoints and that the seed persists; use a host
 with a public IP for anything real.
 
@@ -335,7 +346,7 @@ Bound to `127.0.0.1:9200` by default.
 | `/status.json` | Everything the page shows, as data. |
 | `/qr.svg` | The public key as a scannable square, to save or print. |
 | `/healthz` | Process is up. |
-| `/readyz` | Listening, bootstrapped, and **not** firewalled. 503 otherwise. `probed` says whether that verdict was measured. |
+| `/readyz` | Listening, bootstrapped, and **directly reachable**: not firewalled, with a stable public address. 503 otherwise. `state` says which (`reachable`, `firewalled`, `port-unstable`, `unknown`, `starting`, `stopped`); `probed` says whether the verdict was measured. Use it for readiness, never liveness: a restart does not fix a rewritten port. |
 | `/metrics` | Prometheus. See `deploy/prometheus-scrape.example.yml` for the alerts worth having. |
 | `/.well-known/mirall-relay.json` | Public key, region, operator, caps. |
 | `/admin/` | **Members page.** Add, show and revoke invites. The page itself is a static shell — see below. |

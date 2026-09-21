@@ -206,3 +206,30 @@ export async function waitFor (predicate, { timeoutMs = 15_000, intervalMs = 25,
     await new Promise((resolve) => setTimeout(resolve, intervalMs).unref?.())
   }
 }
+
+// Drive the relay's real NAT sampler, through the same private entry point
+// dht-rpc's own network code uses (dht-rpc/index.js _natAdd), so a test proves
+// the whole chain from sampler to /readyz rather than a stub of networkInfo().
+// Private, like the _updateNetworkState src/reprobe.js relies on: re-check on
+// any hyperdht bump. Bounded, so a changed sampler fails instead of hanging.
+function sampleUntil (app, sample, done) {
+  const { dht } = app.relay
+  for (let i = 0; i < 60 && !done(dht); i++) sample(dht, i)
+  if (!done(dht)) throw new Error('the NAT sampler did not reach the requested state')
+}
+
+export function randomizePort (app) {
+  sampleUntil(app, (dht, i) => dht._natAdd('127.0.0.1', 30000 + i), (dht) => dht.randomized)
+}
+
+export function remapPort (app, port) {
+  sampleUntil(app, (dht) => dht._natAdd('127.0.0.1', port), (dht) => dht.port === port)
+}
+
+export function unsettleHost (app) {
+  sampleUntil(app, (dht, i) => dht._natAdd(i % 2 ? '10.0.0.1' : '10.0.0.2', dht.io.serverSocket.address().port), (dht) => dht.host === null)
+}
+
+export function restorePort (app) {
+  sampleUntil(app, (dht) => dht._natAdd('127.0.0.1', dht.io.serverSocket.address().port), (dht) => dht.remoteAddress() !== null)
+}

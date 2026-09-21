@@ -48,6 +48,15 @@ correctly forwarded relay firewalled for hours. The tell: firewalled from the fi
 of a run, settings untouched, and a plain restart fixes it. `src/reprobe.js` re-runs
 `_updateNetworkState()` while firewalled; re-check that hook on any hyperdht bump.
 
+**`firewalled: false` and `randomized: false` together still do not mean directly
+reachable.** hyperdht offers clients a direct connection only when `dht.remoteAddress()`
+is non-null, and that is null for an unknown host, a randomized port, *or* a consistent
+public port that differs from the bound one — the last is what a NAT rewriting only
+relay-initiated flows produces, and the sampler can settle on it without ever reporting
+randomized. The tell: every client fails with `HOLEPUNCH_*` while the relay is on the
+DHT and not firewalled. Judge reachability by `remoteAddress()` (`networkInfo().publicAddress`),
+and reproduce it in tests with `dht._natAdd()` rather than a stub.
+
 **On Docker Desktop, `firewalled: true` and a 503 from the probe are the expected
 result.** The VM's NAT means the relay is genuinely not publicly reachable, so a local
 Docker run smoke-tests boot and serve — never reachability. Don't debug it as a failure.

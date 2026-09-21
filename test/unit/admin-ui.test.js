@@ -76,12 +76,14 @@ test('the seed path is shown and the seed itself never is', () => {
 
 test('each reachability state gets its own verdict', () => {
   const cases = [
-    [{ state: 'reachable', probed: true }, 'good', /can hole-punch/],
+    [{ state: 'reachable', probed: true }, 'good', /can connect to this relay directly/],
     [{ state: 'reachable', probed: false }, 'warn', /asserted rather than measured/],
     [{ state: 'firewalled', probed: true }, 'bad', /could not reach it/],
+    [{ state: 'port-unstable', probed: true }, 'bad', /rewrites its outbound UDP port/],
+    [{ state: 'port-unstable', probed: false }, 'bad', /rewrites its outbound UDP port/],
     [{ state: 'starting', probed: true }, 'idle', /bootstrapping/],
     [{ state: 'stopped', probed: true }, 'idle', /shutting down/],
-    [{ state: 'unknown', probed: true }, 'idle', /has not reported/]
+    [{ state: 'unknown', probed: true }, 'idle', /has not settled/]
   ]
   for (const [reachability, tone, sentence] of cases) {
     assert.equal(verdict(reachability).tone, tone, `tone for ${reachability.state}`)
@@ -100,17 +102,29 @@ test('the remediation list appears only when the relay is actually unreachable',
   assert.match(html, /UDP 49737<\/strong>/, 'name the port they have to forward')
   assert.match(html, /scripts\/probe\.js/, 'and how to confirm the fix from outside')
   assert.match(html, /CGNAT/, 'including the case where there is no port to forward')
+
+  const unstable = renderPage(status({ reachability: { state: 'port-unstable', publicPort: null, portRandomized: true } }))
+  assert.match(unstable, /class="steps"/)
+  assert.match(unstable, /network_mode: host/, 'the Docker cause')
+  assert.match(unstable, /conntrack -D -p udp --orig-port-src 49737/, 'the stale-state fix, on the bound port')
+  assert.match(unstable, /scripts\/probe\.js/)
+  assert.doesNotMatch(unstable, /Open and forward/, 'the forward is not the problem')
+
+  assert.ok(!renderPage(status({ reachability: { state: 'unknown', publicHost: null, publicPort: null } })).includes('class="steps"'), 'nothing to fix while the address settles')
 })
 
-test('the symmetric-NAT note stands on its own, not on the firewall verdict', () => {
-  // A symmetric NAT reports firewalled: false and is still useless, so this note
-  // has to survive a green verdict.
-  const green = renderPage(status({ reachability: { portRandomized: true } }))
-  assert.match(green, /symmetric NAT/)
-  assert.match(green, /class="pill good"/)
+test('the port note says which rewrite it is', () => {
+  const randomized = renderPage(status({ reachability: { state: 'port-unstable', publicPort: null, portRandomized: true } }))
+  assert.match(randomized, /symmetric NAT/)
+
+  const remapped = renderPage(status({ reachability: { state: 'port-unstable', publicPort: 31562, portRandomized: false } }))
+  assert.match(remapped, /Peers see this relay on port 31562, but it listens on port 49737/)
+  assert.match(remapped, /203\.0\.113\.9:31562/, 'the observed address is the rewritten one, which is the truth')
 
   const red = renderPage(status({ reachability: { state: 'firewalled', portRandomized: true } }))
-  assert.match(red, /symmetric NAT/)
+  assert.match(red, /symmetric NAT/, 'the note does not depend on the verdict')
+
+  assert.doesNotMatch(renderPage(status()), /symmetric NAT|Peers see this relay on port/)
 })
 
 test('the ephemeral note blames the operator only when the operator did it', () => {
@@ -218,11 +232,11 @@ test('a firewalled relay is never told its probe port is its public port', () =>
 
 test('a symmetric NAT is never shown the configured port as if it were observed', () => {
   // dht-rpc sets randomized when the sampler sees a stable host and a MOVING port,
-  // so dht.port is 0 and publicPort arrives null while state stays 'reachable'.
-  // Falling back to cfg.port prints the one number the NAT is definitely not
-  // using, directly above the note saying the port is not stable.
+  // so dht.port is 0 and publicPort arrives null. Falling back to cfg.port prints
+  // the one number the NAT is definitely not using, directly above the note
+  // saying the port is not stable.
   const html = renderPage(status({
-    reachability: { publicPort: null, portRandomized: true }
+    reachability: { state: 'port-unstable', publicPort: null, portRandomized: true }
   }))
   assert.match(html, /Seen from outside as<\/dt><dd>203\.0\.113\.9</)
   assert.ok(!html.includes('203.0.113.9:49737'), 'the configured port is not an observation')

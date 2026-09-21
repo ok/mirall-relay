@@ -78,6 +78,7 @@ test('any change to the server-rendered reachability block asks for the page aga
 
   const changes = [
     ['state', { state: 'firewalled' }],
+    ['state', { state: 'port-unstable' }],
     ['probed', { probed: false }],
     // dht-rpc's NAT sampler learns host and port after boot, so randomization is
     // part of the server-rendered reachability state, not a boot constant.

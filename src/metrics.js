@@ -59,6 +59,14 @@ export function makeMetrics ({ collectDefault = true } = {}) {
       name: 'relay_reachability_probed',
       help: '1 when relay_dht_firewalled came from hyperdht probing, 0 when it was asserted with MIRALL_RELAY_ASSUME_REACHABLE'
     }),
+    // One-hot, so an alert is one rule on state="reachable" and no series vanishes
+    // when the state moves.
+    reachabilityState: new client.Gauge({
+      registers,
+      name: 'relay_reachability_state',
+      help: '1 for the current reachability state (reachable, firewalled, port-unstable, unknown, starting, stopped), 0 for the others',
+      labelNames: ['state']
+    }),
     ready: new client.Gauge({
       registers,
       name: 'relay_ready',
@@ -135,6 +143,15 @@ export function mirrorMembers (metrics, roster) {
   if (!roster || !metrics?.m.members) return
   metrics.m.members.set({ state: 'active' }, roster.active)
   metrics.m.members.set({ state: 'revoked' }, roster.total - roster.active)
+}
+
+export const REACHABILITY_STATES = ['reachable', 'firewalled', 'port-unstable', 'unknown', 'starting', 'stopped']
+
+// Set on scrape from the same function /readyz and the page use, so the three
+// cannot disagree and the gauge cannot go stale between transitions.
+export function mirrorReachability (metrics, state) {
+  if (!metrics?.m.reachabilityState) return
+  for (const each of REACHABILITY_STATES) metrics.m.reachabilityState.set({ state: each }, each === state ? 1 : 0)
 }
 
 // Mirror blind-relay's `server.stats` into the registry. Called immediately

@@ -62,6 +62,8 @@ test('the module is DOM-free, so the server can import it', () => {
 test('each reachability state gets its own pill, shared by both pages', () => {
   assert.deepEqual(reachabilityPill({ state: 'reachable', probed: true }), { key: 'reachable', text: 'Reachable', tone: 'good' })
   assert.deepEqual(reachabilityPill({ state: 'firewalled', probed: true }), { key: 'firewalled', text: 'Not reachable', tone: 'bad' })
+  assert.deepEqual(reachabilityPill({ state: 'port-unstable', probed: true }), { key: 'port-unstable', text: 'Port unstable', tone: 'bad' })
+  assert.deepEqual(reachabilityPill({ state: 'unknown', probed: true }), { key: 'unknown', text: 'Unknown', tone: 'idle' })
   assert.equal(reachabilityPill({ state: 'starting' }).text, 'Starting')
   assert.equal(reachabilityPill({ state: 'stopped' }).text, 'Stopped')
   assert.equal(reachabilityPill({ state: 'something-new' }).key, 'unknown')
@@ -70,4 +72,5 @@ test('each reachability state gets its own pill, shared by both pages', () => {
 
 test('asserted reachability is never given the measured pill', () => {
   assert.deepEqual(reachabilityPill({ state: 'reachable', probed: false }), { key: 'assumed', text: 'Assumed reachable', tone: 'warn' })
+  assert.equal(reachabilityPill({ state: 'port-unstable', probed: false }).key, 'port-unstable', 'asserting the port open says nothing about the port being preserved')
 })

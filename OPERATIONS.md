@@ -73,11 +73,21 @@ it is bad, the steps:
 ```sh
 open http://localhost:9200          # or, headless:
 curl -s localhost:9200/readyz
-# {"ready":true,"firewalled":false,"publicKey":"…"}
+# {"ready":true,"state":"reachable","firewalled":false,"directlyReachable":true,"probed":true,"publicKey":"…"}
 ```
 
-`firewalled: true` → clients cannot reach you. Check, in order: the host firewall,
-the cloud security group, and whether the UDP port is actually forwarded.
+`/readyz` answers 200 only for `"state": "reachable"`, and 503 for everything else:
+
+- `firewalled` → clients cannot reach you. Check, in order: the host firewall, the
+  cloud security group, and whether the UDP port is actually forwarded.
+- `port-unstable` → the port is open, but something between the relay and the
+  internet rewrites its outbound UDP port. See **Port unstable** below.
+- `unknown` → the relay has not settled on its public address yet. See **Unknown
+  after a network change** below.
+
+Use `/readyz` for readiness (take the relay out of rotation), never for liveness:
+restarting the container does not fix a port rewritten on the host, so a liveness
+probe on it would restart-loop. The shipped Docker `HEALTHCHECK` uses `/healthz`.
 
 The verdict can also simply be wrong for a while. HyperDHT probes reachability once
 at startup — it needs 3 of 5 remote nodes to ping the port back — and on its own
@@ -88,24 +98,46 @@ and 5 minutes, then every 5 minutes. A relay that flips to reachable shortly aft
 a restart, with `reachability re-probe passed` in the log, was that case. It does not apply under
 `MIRALL_RELAY_ASSUME_REACHABLE`, where nothing was probed to begin with.
 
-Two states the page separates that `/readyz` does not:
+**Assumed reachable.** `MIRALL_RELAY_ASSUME_REACHABLE` makes `firewalled` read
+`false` whether or not anything was measured. The page says so in words; `/readyz`
+reports it as `probed: false` and `/metrics` as `relay_reachability_probed 0`.
+Anything consuming only `firewalled` — a platform health check, an uptime probe —
+is reporting a fact nobody established.
 
-- **Assumed reachable.** `MIRALL_RELAY_ASSUME_REACHABLE` makes `firewalled` read
-  `false` whether or not anything was measured. The page says so in words;
-  `/readyz` reports it as `probed: false` and `/metrics` as
-  `relay_reachability_probed 0`. Anything consuming only `firewalled` — a
-  platform health check, an uptime probe — is reporting a fact nobody
-  established.
-- **Symmetric NAT.** A NAT that assigns a different external port per destination
-  reports `firewalled: false` and is still unusable as a relay. The page raises it
-  from `dht.randomized`; nothing else does.
+**Port unstable.** Not firewalled is not enough. HyperDHT offers clients a direct
+connection only when the public port other nodes observe is the port the relay is
+bound to. When something rewrites the relay's *outbound* port, nodes the relay
+contacts see a different port from nodes that contact it, and HyperDHT stops
+advertising a public address: every client then has to hole-punch to the relay,
+which fails for exactly the peers that need one. It shows in one of two shapes,
+both reported as `port-unstable`:
+
+- a different external port per destination (`portRandomized: true` in
+  `status.json`, as behind a symmetric NAT);
+- one consistent but wrong port (`publicPort` in `status.json` differs from the
+  bound port), which is what a NAT rewriting only relay-initiated flows produces.
+
+`/readyz`, `status.json` `state`, the page (**Port unstable**, with the steps), the
+log (`outbound UDP port is being rewritten`, at `warn`) and
+`relay_reachability_state{state="port-unstable"}` all raise it. The causes, in the
+order to check them: the container publishes the port through Docker's NAT
+(`-p …/udp`) instead of host networking; a NAT or tunnel between the host and the
+internet rewrites outbound ports (cloud NAT gateway, CGNAT, a VPN or WireGuard
+tunnel); stale conntrack state on the host after a network or container change.
+Fixes are in [The relay is up but nothing connects](#the-relay-is-up-but-nothing-connects).
+
+**Unknown after a network change.** When the host's public IP changes, the relay
+spends a few minutes re-learning it, and HyperDHT advertises no public address
+until it settles, so `/readyz` is 503 with `"state": "unknown"` meanwhile. That is
+expected on a line with a dynamic IP and logged at `info`; a `warn` follows only if
+it has not settled after 10 minutes. Alert on it only when it lasts (the example
+rule in `deploy/prometheus-scrape.example.yml` waits 10 minutes).
 
 **Docker networking.** `network_mode: host` is the reliable choice. Publishing
-UDP with `-p 49737:49737/udp` works on many hosts but Docker's userland proxy and
-conntrack can rewrite the external mapping in ways that degrade hole-punch success
-and are miserable to diagnose. If you must publish rather than share the host
-network, verify with `scripts/probe.js` from a *different* machine, not just
-`/readyz`.
+UDP with `-p 49737:49737/udp` works on many hosts, but Docker's userland proxy and
+conntrack can rewrite the external mapping, which reads as **Port unstable** on
+`/readyz` and the page. If you must publish rather than share the host network,
+also verify with `scripts/probe.js` from a *different* machine.
 
 **`MIRALL_RELAY_ASSUME_REACHABLE`** skips hyperdht's own probing. Set it only when
 you know the host is public — setting it while actually firewalled produces a
@@ -145,6 +177,7 @@ actually matter:
 | Signal | Why it matters |
 |---|---|
 | `relay_dht_firewalled == 1` | You are advertising a key nobody can reach. |
+| `relay_reachability_state{state="reachable"} == 0` for 10 minutes | Peers cannot connect directly: firewalled, **Port unstable**, or the public address has not settled. The wait tolerates the few minutes an IP change takes. |
 | `relay_reachability_probed == 0` | Reachability was asserted, not measured — so the row above is forced to 0 and can never fire. |
 | `relay_ready == 0` | Not listening or not bootstrapped. |
 | `relay_links_active` near `maxActiveLinks` | About to start refusing connections. |
@@ -265,10 +298,28 @@ restart. Both take effect for new links immediately.
 
 ### The relay is up but nothing connects
 
-In order: the status page's reachability verdict (or `/readyz` → `firewalled`); UDP
+In order: the status page's reachability verdict (or `/readyz` → `state`); UDP
 reachability from outside; whether the published public key matches the one on the
 page (a lost seed is the usual cause — check the **Identity seed** line);
 `scripts/probe.js` from another machine.
+
+For `"state": "port-unstable"` (see [Port unstable](#3-networking-and-reachability)):
+
+1. **Docker port publishing.** Switch to `network_mode: host`. Until then, clearing
+   the container's stale mappings can help:
+   `conntrack -D -p udp -s $(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container>)`.
+2. **A NAT or tunnel in front of the host.** It must keep the relay's UDP source
+   port unchanged. If it cannot, run the relay where it has a public IP, or forward
+   on a NAT that preserves ports.
+3. **Stale conntrack state** after a network or container change. Restart the
+   relay; if it is still `port-unstable` after a few minutes, clear the relay's
+   entries on the host:
+   - host networking or bare metal: `conntrack -D -p udp --orig-port-src <MIRALL_RELAY_PORT>`;
+   - any container platform (StartOS, Umbrel): `conntrack -D -p udp -s <container IP>`,
+     and see that platform's package docs.
+
+It recovers on its own once the rewrite stops: the log says `outbound UDP port is
+stable again` and `/readyz` returns 200.
 
 ### Restart
 

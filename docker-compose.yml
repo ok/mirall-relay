@@ -17,7 +17,7 @@ services:
     #
     # (b) explicit publishing. Comment out network_mode above and uncomment this.
     #     Verify at http://127.0.0.1:9200 -> "Reachable", or with
-    #     `curl 127.0.0.1:9200/readyz` -> "firewalled": false.
+    #     `curl 127.0.0.1:9200/readyz` -> "state": "reachable".
     #     NOTE: also set MIRALL_RELAY_ADMIN_HOST to 0.0.0.0 below. Under bridge
     #     networking Docker forwards the published port to the CONTAINER's
     #     address, which a socket listening on the container's own loopback never

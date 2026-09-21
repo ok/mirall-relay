@@ -13,6 +13,11 @@ scrape_configs:
 #   relay_dht_firewalled == 1
 #     The relay cannot be reached. It is advertising a key nobody can use.
 #
+#   relay_reachability_state{state="reachable"} == 0   for: 10m
+#     Peers cannot connect to this relay directly: firewalled, port unstable
+#     (something rewrites its outbound UDP port), or its public address has not
+#     settled. The `for` tolerates the few minutes an IP change takes.
+#
 #   relay_reachability_probed == 0
 #     Reachability was ASSERTED with MIRALL_RELAY_ASSUME_REACHABLE, not measured,
 #     so relay_dht_firewalled is forced to 0. Alert on the assertion itself,

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import net from 'node:net'
 import idEnc from 'hypercore-id-encoding'
 import b4a from 'b4a'
-import { createTestnet, startTestRelay, relayedPair, waitFor } from '../helpers/make-relay.js'
+import { createTestnet, startTestRelay, relayedPair, waitFor, randomizePort, remapPort, unsettleHost, restorePort } from '../helpers/make-relay.js'
 import { withHttpRelay, httpRelay, request, jsonRequest, urlOf } from '../helpers/http-relay.js'
 
 test('/healthz reports the process is up', async (t) => {
@@ -20,6 +20,8 @@ test('/readyz reports readiness and reachability', async (t) => {
 
   assert.equal(out.json.ready, true)
   assert.equal(out.json.firewalled, false, 'the testnet relay is directly reachable')
+  assert.equal(out.json.state, 'reachable')
+  assert.equal(out.json.directlyReachable, true)
   assert.equal(out.statusCode, 200)
   assert.equal(out.json.publicKey, relay.relay.publicKeyZ32)
 })
@@ -120,6 +122,106 @@ test('/readyz and /metrics both say whether reachability was measured', async (t
   assert.match(body, /relay_dht_firewalled 0/)
   assert.match(body, /relay_reachability_probed 0/, 'the alertable form of the same fact')
   assert.match(body, /# HELP relay_reachability_probed .*asserted/)
+})
+
+// The rig sets ASSUME_REACHABLE, so every test below also proves that asserting
+// the port open does not hide a rewritten one.
+async function readyz (relay) {
+  const out = await jsonRequest(urlOf(relay, '/readyz'))
+  return { statusCode: out.statusCode, ...out.json }
+}
+
+test('/readyz is 503 while the outbound port is randomized', async (t) => {
+  const relay = await withHttpRelay(t)
+  randomizePort(relay)
+
+  const out = await readyz(relay)
+  assert.equal(out.statusCode, 503, 'not firewalled is not enough')
+  assert.equal(out.ready, true)
+  assert.equal(out.firewalled, false)
+  assert.equal(out.state, 'port-unstable')
+  assert.equal(out.directlyReachable, false)
+
+  const status = (await jsonRequest(urlOf(relay, '/status.json'))).json
+  assert.equal(status.reachability.state, 'port-unstable')
+  assert.equal(status.reachability.portRandomized, true)
+  assert.match((await request(urlOf(relay, '/metrics'))).body, /relay_reachability_state\{state="port-unstable"\} 1/)
+  assert.match((await request(urlOf(relay, '/'))).body, /Port unstable/)
+
+  restorePort(relay)
+  const back = await readyz(relay)
+  assert.equal(back.statusCode, 200)
+  assert.equal(back.state, 'reachable')
+})
+
+test('/readyz is 503 when the outbound port is consistently rewritten', async (t) => {
+  // The shape randomized misses: every relay-initiated flow leaves on the same
+  // wrong port, so the sampler settles on it and never reports randomized.
+  const relay = await withHttpRelay(t)
+  remapPort(relay, 41000)
+
+  const out = await readyz(relay)
+  assert.equal(out.statusCode, 503)
+  assert.equal(out.state, 'port-unstable')
+
+  const status = (await jsonRequest(urlOf(relay, '/status.json'))).json
+  assert.equal(status.reachability.portRandomized, false)
+  assert.equal(status.reachability.publicPort, 41000)
+  assert.match((await request(urlOf(relay, '/'))).body, new RegExp(`Peers see this relay on port 41000, but it listens on port ${status.reachability.bound.port}`))
+})
+
+test('/readyz is 503 and unknown while the public address is unsettled', async (t) => {
+  const relay = await withHttpRelay(t)
+  unsettleHost(relay)
+
+  const out = await readyz(relay)
+  assert.equal(out.statusCode, 503)
+  assert.equal(out.state, 'unknown')
+  assert.match((await request(urlOf(relay, '/metrics'))).body, /relay_reachability_state\{state="unknown"\} 1/)
+
+  restorePort(relay)
+  assert.equal((await readyz(relay)).statusCode, 200)
+})
+
+test('a probing relay reports a rewritten port the same way', async (t) => {
+  const relay = await withHttpRelay(t, { MIRALL_RELAY_ASSUME_REACHABLE: 'false' })
+  randomizePort(relay)
+  const out = await readyz(relay)
+  assert.equal(out.statusCode, 503)
+  assert.equal(out.probed, true)
+  assert.equal(out.state, 'port-unstable')
+})
+
+test('reachability transitions are logged once each', async (t) => {
+  const lines = []
+  const logger = Object.fromEntries(['debug', 'info', 'warn', 'error'].map((level) => [
+    level,
+    (fields, msg) => lines.push({ level, msg: typeof fields === 'string' ? fields : msg, fields })
+  ]))
+  const relay = await withHttpRelay(t, {}, { logger })
+  const about = (text) => lines.filter((line) => line.msg && line.msg.includes(text))
+
+  randomizePort(relay)
+  const rewritten = about('outbound UDP port is being rewritten')
+  assert.equal(rewritten.length, 1)
+  assert.equal(rewritten[0].level, 'warn')
+  assert.equal(rewritten[0].fields.portRandomized, true)
+
+  remapPort(relay, 41000)
+  assert.equal(about('outbound UDP port is being rewritten').length, 1, 'still port-unstable, not a new transition')
+
+  restorePort(relay)
+  const stable = about('outbound UDP port is stable again')
+  assert.equal(stable.length, 1)
+  assert.equal(stable[0].level, 'warn')
+
+  unsettleHost(relay)
+  const unsettled = about('public address not settled')
+  assert.equal(unsettled.length, 1)
+  assert.equal(unsettled[0].level, 'info', 'a daily IP change is not an incident')
+
+  restorePort(relay)
+  assert.equal(about('public address settled').length, 1)
 })
 
 test('a relay that probes for itself reports probed on both surfaces', async (t) => {

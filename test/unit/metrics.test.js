@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { makeMetrics, mirrorRelayStats } from '../../src/metrics.js'
+import { makeMetrics, mirrorReachability, mirrorRelayStats, REACHABILITY_STATES } from '../../src/metrics.js'
 import { capabilityDoc } from '../../src/admin-http.js'
 import { DEFAULTS } from '../../src/config.js'
 
@@ -68,4 +68,17 @@ test('the capability doc exposes the public key, labels and caps — and no secr
   const serialised = JSON.stringify(doc)
   assert.doesNotMatch(serialised, /seed/i, 'the capability doc is public — no seed material')
   assert.doesNotMatch(serialised, /secret/i)
+})
+
+test('the reachability state is one-hot, and moving it moves the 1', async () => {
+  const metrics = makeMetrics({ collectDefault: false })
+  const current = async () => (await metrics.m.reachabilityState.get()).values.filter((row) => row.value === 1).map((row) => row.labels.state)
+
+  mirrorReachability(metrics, 'port-unstable')
+  assert.deepEqual(await current(), ['port-unstable'])
+  assert.equal((await metrics.m.reachabilityState.get()).values.length, REACHABILITY_STATES.length, 'no series vanishes')
+
+  mirrorReachability(metrics, 'reachable')
+  assert.deepEqual(await current(), ['reachable'])
+  assert.match(await metrics.registry.metrics(), /relay_reachability_state\{state="port-unstable"\} 0/)
 })
