@@ -27,6 +27,7 @@ function fakeRelay (overrides = {}) {
     networkInfo: () => ({
       host: '203.0.113.9',
       port: 49737,
+      publicAddress: { host: '203.0.113.9', port: 49737 },
       randomized: false,
       bootstrapped: true,
       ephemeral: false,
@@ -58,11 +59,18 @@ function build (env = {}, relayOverrides = {}, roster = null) {
 }
 
 test('reachabilityState reports what the DHT believes', () => {
-  assert.equal(reachabilityState({ ready: true, closing: false, firewalled: false }), 'reachable')
-  assert.equal(reachabilityState({ ready: true, closing: false, firewalled: true }), 'firewalled')
-  assert.equal(reachabilityState({ ready: false, closing: false, firewalled: null }), 'starting')
-  assert.equal(reachabilityState({ ready: false, closing: true, firewalled: false }), 'stopped')
-  assert.equal(reachabilityState({ ready: true, closing: false, firewalled: null }), 'unknown')
+  const net = (host, port, publicAddress) => () => ({ host, port, publicAddress })
+  const stable = net('203.0.113.9', 49737, { host: '203.0.113.9', port: 49737 })
+  const relay = (firewalled, networkInfo = stable, ready = true, closing = false) => ({ ready, closing, firewalled, networkInfo })
+
+  assert.equal(reachabilityState(relay(false)), 'reachable')
+  assert.equal(reachabilityState(relay(false, net('203.0.113.9', 0, null))), 'port-unstable', 'randomized per destination')
+  assert.equal(reachabilityState(relay(false, net('203.0.113.9', 41000, null))), 'port-unstable', 'rewritten to one other port')
+  assert.equal(reachabilityState(relay(false, net(null, null, null))), 'unknown', 'address not settled')
+  assert.equal(reachabilityState(relay(true, net('203.0.113.9', 0, null))), 'firewalled', 'fix the forward first')
+  assert.equal(reachabilityState(relay(null)), 'unknown')
+  assert.equal(reachabilityState(relay(null, stable, false)), 'starting')
+  assert.equal(reachabilityState(relay(false, stable, false, true)), 'stopped')
 })
 
 test('asserted reachability is never reported as measured', async (t) => {
@@ -162,13 +170,34 @@ test('caps() is the single definition the capability doc also uses', async () =>
   assert.equal(status.caps.maxLinkBytes, 1024 ** 3)
 })
 
-test('the symmetric-NAT signal is reported separately from the firewall verdict', async () => {
+test('a randomized outbound port is port-unstable, not reachable', async () => {
   const status = await build({}, {
-    networkInfo: () => ({ host: '203.0.113.9', port: 0, randomized: true, bootstrapped: true, ephemeral: false, nodes: 4, address: null })
+    networkInfo: () => ({ host: '203.0.113.9', port: 0, publicAddress: null, randomized: true, bootstrapped: true, ephemeral: false, nodes: 4, address: null })
   }).snapshot()
 
-  assert.equal(status.reachability.state, 'reachable', 'the DHT is happy')
-  assert.equal(status.reachability.portRandomized, true, 'and the relay is still unusable')
+  assert.equal(status.reachability.firewalled, false, 'the firewall verdict alone says fine')
+  assert.equal(status.reachability.state, 'port-unstable')
+  assert.equal(status.reachability.portRandomized, true)
+  assert.equal(status.reachability.directlyReachable, false)
+})
+
+test('an outbound port rewritten to one other port is port-unstable too', async () => {
+  // The shape randomized misses: every relay-initiated flow leaves on the same
+  // wrong port, so the sampler settles on it and never reports randomized.
+  const status = await build({}, {
+    networkInfo: () => ({ host: '203.0.113.9', port: 31562, publicAddress: null, randomized: false, bootstrapped: true, ephemeral: false, nodes: 4, address: { host: '0.0.0.0', port: 49737, family: 4 } })
+  }).snapshot()
+
+  assert.equal(status.reachability.state, 'port-unstable')
+  assert.equal(status.reachability.portRandomized, false)
+  assert.equal(status.reachability.publicPort, 31562)
+  assert.equal(status.reachability.directlyReachable, false)
+})
+
+test('a directly reachable relay says so', async () => {
+  const status = await build().snapshot()
+  assert.equal(status.reachability.state, 'reachable')
+  assert.equal(status.reachability.directlyReachable, true)
 })
 
 test('an ephemeral node reports whether it CHOSE to be one', async () => {

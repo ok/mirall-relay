@@ -9,6 +9,7 @@ const REACHABILITY = {
   reachable: { text: 'Reachable', tone: 'good' },
   assumed: { text: 'Assumed reachable', tone: 'warn' },
   firewalled: { text: 'Not reachable', tone: 'bad' },
+  'port-unstable': { text: 'Port unstable', tone: 'bad' },
   starting: { text: 'Starting', tone: 'idle' },
   stopped: { text: 'Stopped', tone: 'idle' },
   unknown: { text: 'Unknown', tone: 'idle' }

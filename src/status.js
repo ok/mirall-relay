@@ -32,15 +32,24 @@ export function capabilityDoc (cfg, relay) {
   }
 }
 
-// What the DHT believes. Kept separate from `probed` below, because
-// MIRALL_RELAY_ASSUME_REACHABLE passes firewalled: false straight into the DHT
-// constructor (src/relay.js) — so this reads 'reachable' whether the node measured
-// its reachability or was merely told to assume it.
+// What the DHT believes. 'reachable' means hyperdht is offering clients a direct
+// connection to a stable public address; not firewalled is not enough. A known
+// host without that address is 'port-unstable' (something rewrites the outbound
+// port); no settled host yet is 'unknown'.
+//
+// Kept separate from `probed` below, because MIRALL_RELAY_ASSUME_REACHABLE passes
+// firewalled: false straight into the DHT constructor (src/relay.js) — so this
+// reads 'reachable' whether the node measured its reachability or was merely told
+// to assume it.
 export function reachabilityState (relay) {
   if (relay.closing) return 'stopped'
   if (!relay.ready) return 'starting'
   if (relay.firewalled === true) return 'firewalled'
-  if (relay.firewalled === false) return 'reachable'
+  if (relay.firewalled === false) {
+    const net = relay.networkInfo()
+    if (net.publicAddress) return 'reachable'
+    return net.host ? 'port-unstable' : 'unknown'
+  }
   return 'unknown'
 }
 
@@ -100,6 +109,7 @@ export async function statusSnapshot ({ cfg, relay, metrics, firewall, roster, v
       publicHost: net.host,
       publicPort: net.port,
       portRandomized: net.randomized,
+      directlyReachable: !!net.publicAddress,
       bootstrapped: net.bootstrapped,
       // hyperdht's adaptive mode keeps a firewalled node ephemeral whatever the
       // operator asked for, so the observed state and the configured one are two

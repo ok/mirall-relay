@@ -1,5 +1,5 @@
-import { mirrorMembers, mirrorRelayStats } from '../../metrics.js'
-import { capabilityDoc, statusSnapshot } from '../../status.js'
+import { mirrorMembers, mirrorReachability, mirrorRelayStats } from '../../metrics.js'
+import { capabilityDoc, reachabilityState, statusSnapshot } from '../../status.js'
 import { loadAssets, uiPaths, etagFor, renderPage, standaloneQr } from '../status/page.js'
 import { cached, json, notFound, send } from './responses.js'
 
@@ -46,11 +46,16 @@ export function createPublicRoutes ({ cfg, metrics, relay, firewall, roster }) {
         return json(res, 200, { ok: true })
 
       case '/readyz': {
-        const firewalled = relay.firewalled
-        const ok = relay.ready && firewalled === false
+        // Not firewalled is not enough: hyperdht offers clients a direct connection
+        // only with a stable public address, and without one every client must
+        // hole-punch, which fails for the peers that need a relay.
+        const state = reachabilityState(relay)
+        const ok = relay.ready && state === 'reachable'
         return json(res, ok ? 200 : 503, {
           ready: relay.ready,
-          firewalled,
+          state,
+          firewalled: relay.firewalled,
+          directlyReachable: !!relay.networkInfo().publicAddress,
           probed: !cfg.assumeReachable,
           publicKey: relay.publicKeyZ32
         })
@@ -62,6 +67,7 @@ export function createPublicRoutes ({ cfg, metrics, relay, firewall, roster }) {
       case '/metrics': {
         mirrorRelayStats(metrics, relay.relayStats())
         mirrorMembers(metrics, roster)
+        mirrorReachability(metrics, reachabilityState(relay))
         const body = await metrics.registry.metrics()
         return send(res, 200, body, metrics.registry.contentType, { 'cache-control': 'no-store' })
       }
